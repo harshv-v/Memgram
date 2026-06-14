@@ -64,4 +64,5 @@ app.include_router(proposals_router, prefix="/v1/proposals", dependencies=auth)
 async def health(request: Request):
     async with request.app.state.pool.acquire() as conn:
         await conn.fetchval("SELECT 1")
-    return {"status": "ok", "queue_depth": request.app.state.queue.depth()}
+    q = request.app.state.queue
+    return {"status": "ok", "queue_depth": q.depth(), "dead_letter": q.dlq_depth()}

@@ -3,6 +3,7 @@ framework' is this dict and a loop."""
 import asyncio
 import logging
 import os
+import time
 
 from memgram.agents.decay import DecayAgent
 from memgram.agents.extractor import ExtractorAgent
@@ -42,12 +43,19 @@ class Dispatcher:
         # extract jobs count toward the reflection cadence
         self.reflect_every = int(config.get("reflect_every_n", 20))
         self.features = config.get("features", {})
+        # durability tuning
+        self.reclaim_every = float(config.get("reclaim_every_s", 30))
+        self.reclaim_idle_ms = int(config.get("reclaim_idle_ms", 60_000))
+        self.max_deliveries = int(config.get("max_deliveries", 5))
 
-    async def handle(self, job: dict) -> None:
+    async def handle(self, job: dict):
+        """Run the job's agent. Returns the agent result; None means the agent
+        exhausted its own retries (or the type is unknown). Raises only on a
+        genuinely unexpected error, which the caller treats as 'leave pending'."""
         agent = self.agents.get(job["type"])
         if agent is None:
             logger.error("unknown job type %s", job["type"])
-            return
+            return None
         result = await agent.run(job["payload"])
         logger.info("job %s (%s) -> %s", job["id"], job["type"], result)
 
@@ -59,9 +67,41 @@ class Dispatcher:
                     "project_id": p["project_id"], "user_id": p["user_id"],
                     "agent_id": p["agent_id"],
                 })
+        return result
+
+    async def _process(self, job: dict) -> None:
+        # Too many deliveries (it keeps crashing the worker) -> quarantine it.
+        if self.queue.deliveries(job) > self.max_deliveries:
+            logger.error("job %s exceeded %d deliveries -> dead-letter",
+                         job.get("id"), self.max_deliveries)
+            self.queue.dead_letter(job, "max deliveries exceeded")
+            return
+        try:
+            result = await self.handle(job)
+        except Exception:
+            # Leave UNACKED: it stays in the group's pending list and is
+            # reclaimed + retried by a worker later. Nothing is lost on a crash.
+            logger.exception("job %s crashed; left pending for redelivery", job.get("id"))
+            return
+        if result is None:
+            logger.warning("job %s produced no result -> dead-letter", job.get("id"))
+            self.queue.dead_letter(job, "no result after retries")
+        else:
+            self.queue.ack(job)
+
+    async def _reclaim_stale(self) -> None:
+        try:
+            jobs = await asyncio.to_thread(self.queue.reclaim, self.reclaim_idle_ms)
+        except Exception:
+            logger.exception("reclaim failed")
+            return
+        for job in jobs:
+            logger.warning("reclaimed stranded job %s (%s)", job.get("id"), job["type"])
+            await self._process(job)
 
     async def run_forever(self, poll_timeout: int = 5) -> None:
         logger.info("memgram worker started")
+        last_reclaim = 0.0
         while True:
             try:
                 job = await asyncio.to_thread(self.queue.dequeue, poll_timeout)
@@ -70,12 +110,14 @@ class Dispatcher:
                 logger.exception("dequeue failed; backing off")
                 await asyncio.sleep(1)
                 continue
-            if job is None:
+            if job is not None:
+                await self._process(job)
                 continue
-            try:
-                await self.handle(job)
-            except Exception:
-                logger.exception("job %s crashed", job.get("id"))
+            # Idle: periodically reclaim jobs stranded by a crashed worker.
+            now = time.monotonic()
+            if now - last_reclaim >= self.reclaim_every:
+                last_reclaim = now
+                await self._reclaim_stale()
 
     async def drain(self) -> int:
         """Process everything currently queued, then return. Used by tests."""
@@ -85,4 +127,5 @@ class Dispatcher:
             if job is None:
                 return n
             await self.handle(job)
+            self.queue.ack(job)
             n += 1
