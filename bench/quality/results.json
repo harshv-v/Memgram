@@ -1,0 +1,390 @@
+{
+  "memgram": [
+    {
+      "persona": "alice",
+      "type": "single",
+      "q": "What programming language does the user primarily write?",
+      "expect": "Go",
+      "pred": "Go",
+      "ok": true
+    },
+    {
+      "persona": "alice",
+      "type": "single",
+      "q": "What company does the user work at?",
+      "expect": "Acme Robotics",
+      "pred": "Acme Robotics.",
+      "ok": true
+    },
+    {
+      "persona": "alice",
+      "type": "update",
+      "q": "What city does the user currently live in?",
+      "expect": "Munich",
+      "pred": "Munich",
+      "ok": true
+    },
+    {
+      "persona": "alice",
+      "type": "update",
+      "q": "What is the user's current role/title?",
+      "expect": "tech lead",
+      "pred": "Backend Engineer",
+      "ok": false
+    },
+    {
+      "persona": "alice",
+      "type": "single",
+      "q": "What food allergy should be considered?",
+      "expect": "peanuts",
+      "pred": "Peanut allergy.",
+      "ok": true
+    },
+    {
+      "persona": "alice",
+      "type": "preference",
+      "q": "What is the user's preferred answer style?",
+      "expect": "short / concise",
+      "pred": "Short and to-the-point.",
+      "ok": true
+    },
+    {
+      "persona": "alice",
+      "type": "absent",
+      "q": "What kind of pet does the user have?",
+      "expect": "NO_INFO",
+      "pred": "NO_INFO",
+      "ok": true
+    },
+    {
+      "persona": "ben",
+      "type": "single",
+      "q": "What engine and language is the user using for the game?",
+      "expect": "Unity / C#",
+      "pred": "Unity with C#.",
+      "ok": true
+    },
+    {
+      "persona": "ben",
+      "type": "update",
+      "q": "Which backend did the user switch TO?",
+      "expect": "Supabase",
+      "pred": "Supabase",
+      "ok": true
+    },
+    {
+      "persona": "ben",
+      "type": "single",
+      "q": "What time zone does the user work in?",
+      "expect": "Eastern",
+      "pred": "Eastern time zone.",
+      "ok": true
+    },
+    {
+      "persona": "ben",
+      "type": "single",
+      "q": "What is the user's monthly cloud budget?",
+      "expect": "200 dollars",
+      "pred": "200 dollars a month.",
+      "ok": true
+    },
+    {
+      "persona": "ben",
+      "type": "preference",
+      "q": "How does the user like answers formatted?",
+      "expect": "detailed with code examples",
+      "pred": "Detailed explanations with code examples.",
+      "ok": true
+    },
+    {
+      "persona": "ben",
+      "type": "absent",
+      "q": "What is the user's spouse's name?",
+      "expect": "NO_INFO",
+      "pred": "NO_INFO",
+      "ok": true
+    },
+    {
+      "persona": "carmen",
+      "type": "single",
+      "q": "What is the user's profession?",
+      "expect": "data scientist",
+      "pred": "Data scientist.",
+      "ok": true
+    },
+    {
+      "persona": "carmen",
+      "type": "update",
+      "q": "What project is the user CURRENTLY working on?",
+      "expect": "fraud detection",
+      "pred": "Fraud-detection project.",
+      "ok": true
+    },
+    {
+      "persona": "carmen",
+      "type": "single",
+      "q": "Which deep learning framework does the user use?",
+      "expect": "PyTorch",
+      "pred": "PyTorch",
+      "ok": true
+    },
+    {
+      "persona": "carmen",
+      "type": "update",
+      "q": "What day does the user now deploy on?",
+      "expect": "Tuesday",
+      "pred": "Tuesdays",
+      "ok": true
+    },
+    {
+      "persona": "carmen",
+      "type": "single",
+      "q": "What is the user's dietary preference?",
+      "expect": "vegetarian",
+      "pred": "Vegetarian.",
+      "ok": true
+    },
+    {
+      "persona": "carmen",
+      "type": "absent",
+      "q": "What car does the user drive?",
+      "expect": "NO_INFO",
+      "pred": "NO_INFO",
+      "ok": true
+    },
+    {
+      "persona": "deepak",
+      "type": "single",
+      "q": "What platform does the user's store run on?",
+      "expect": "Shopify",
+      "pred": "Shopify.",
+      "ok": true
+    },
+    {
+      "persona": "deepak",
+      "type": "single",
+      "q": "What is the user's best-selling product?",
+      "expect": "cardholder",
+      "pred": "Minimalist cardholder.",
+      "ok": true
+    },
+    {
+      "persona": "deepak",
+      "type": "single",
+      "q": "Which new market is the user expanding to?",
+      "expect": "US",
+      "pred": "US market",
+      "ok": true
+    },
+    {
+      "persona": "deepak",
+      "type": "preference",
+      "q": "What tone does the user want in writing?",
+      "expect": "warm / friendly",
+      "pred": "Warm, friendly tone.",
+      "ok": true
+    },
+    {
+      "persona": "deepak",
+      "type": "absent",
+      "q": "How many employees does the user have?",
+      "expect": "NO_INFO",
+      "pred": "NO_INFO",
+      "ok": true
+    }
+  ],
+  "mem0": [
+    {
+      "persona": "alice",
+      "type": "single",
+      "q": "What programming language does the user primarily write?",
+      "expect": "Go",
+      "pred": "Go",
+      "ok": true
+    },
+    {
+      "persona": "alice",
+      "type": "single",
+      "q": "What company does the user work at?",
+      "expect": "Acme Robotics",
+      "pred": "Acme Robotics",
+      "ok": true
+    },
+    {
+      "persona": "alice",
+      "type": "update",
+      "q": "What city does the user currently live in?",
+      "expect": "Munich",
+      "pred": "Munich",
+      "ok": true
+    },
+    {
+      "persona": "alice",
+      "type": "update",
+      "q": "What is the user's current role/title?",
+      "expect": "tech lead",
+      "pred": "Backend engineer",
+      "ok": false
+    },
+    {
+      "persona": "alice",
+      "type": "single",
+      "q": "What food allergy should be considered?",
+      "expect": "peanuts",
+      "pred": "Peanut allergy.",
+      "ok": true
+    },
+    {
+      "persona": "alice",
+      "type": "preference",
+      "q": "What is the user's preferred answer style?",
+      "expect": "short / concise",
+      "pred": "Concise answers.",
+      "ok": true
+    },
+    {
+      "persona": "alice",
+      "type": "absent",
+      "q": "What kind of pet does the user have?",
+      "expect": "NO_INFO",
+      "pred": "NO_INFO",
+      "ok": true
+    },
+    {
+      "persona": "ben",
+      "type": "single",
+      "q": "What engine and language is the user using for the game?",
+      "expect": "Unity / C#",
+      "pred": "Unity with C#.",
+      "ok": true
+    },
+    {
+      "persona": "ben",
+      "type": "update",
+      "q": "Which backend did the user switch TO?",
+      "expect": "Supabase",
+      "pred": "Supabase",
+      "ok": true
+    },
+    {
+      "persona": "ben",
+      "type": "single",
+      "q": "What time zone does the user work in?",
+      "expect": "Eastern",
+      "pred": "Eastern time zone.",
+      "ok": true
+    },
+    {
+      "persona": "ben",
+      "type": "single",
+      "q": "What is the user's monthly cloud budget?",
+      "expect": "200 dollars",
+      "pred": "200 dollars a month.",
+      "ok": true
+    },
+    {
+      "persona": "ben",
+      "type": "preference",
+      "q": "How does the user like answers formatted?",
+      "expect": "detailed with code examples",
+      "pred": "Detailed explanations with code examples.",
+      "ok": true
+    },
+    {
+      "persona": "ben",
+      "type": "absent",
+      "q": "What is the user's spouse's name?",
+      "expect": "NO_INFO",
+      "pred": "NO_INFO",
+      "ok": true
+    },
+    {
+      "persona": "carmen",
+      "type": "single",
+      "q": "What is the user's profession?",
+      "expect": "data scientist",
+      "pred": "Data scientist",
+      "ok": true
+    },
+    {
+      "persona": "carmen",
+      "type": "update",
+      "q": "What project is the user CURRENTLY working on?",
+      "expect": "fraud detection",
+      "pred": "Fraud-detection project.",
+      "ok": true
+    },
+    {
+      "persona": "carmen",
+      "type": "single",
+      "q": "Which deep learning framework does the user use?",
+      "expect": "PyTorch",
+      "pred": "PyTorch",
+      "ok": true
+    },
+    {
+      "persona": "carmen",
+      "type": "update",
+      "q": "What day does the user now deploy on?",
+      "expect": "Tuesday",
+      "pred": "Tuesdays",
+      "ok": true
+    },
+    {
+      "persona": "carmen",
+      "type": "single",
+      "q": "What is the user's dietary preference?",
+      "expect": "vegetarian",
+      "pred": "Vegetarian.",
+      "ok": true
+    },
+    {
+      "persona": "carmen",
+      "type": "absent",
+      "q": "What car does the user drive?",
+      "expect": "NO_INFO",
+      "pred": "NO_INFO",
+      "ok": true
+    },
+    {
+      "persona": "deepak",
+      "type": "single",
+      "q": "What platform does the user's store run on?",
+      "expect": "Shopify",
+      "pred": "Shopify",
+      "ok": true
+    },
+    {
+      "persona": "deepak",
+      "type": "single",
+      "q": "What is the user's best-selling product?",
+      "expect": "cardholder",
+      "pred": "Minimalist cardholder.",
+      "ok": true
+    },
+    {
+      "persona": "deepak",
+      "type": "single",
+      "q": "Which new market is the user expanding to?",
+      "expect": "US",
+      "pred": "US market",
+      "ok": true
+    },
+    {
+      "persona": "deepak",
+      "type": "preference",
+      "q": "What tone does the user want in writing?",
+      "expect": "warm / friendly",
+      "pred": "Warm, friendly tone.",
+      "ok": true
+    },
+    {
+      "persona": "deepak",
+      "type": "absent",
+      "q": "How many employees does the user have?",
+      "expect": "NO_INFO",
+      "pred": "NO_INFO",
+      "ok": true
+    }
+  ]
+}

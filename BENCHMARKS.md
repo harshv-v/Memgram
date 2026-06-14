@@ -67,11 +67,50 @@ alone would be misleading.
 - **Search:** for *repeated* queries Memgram's in-process embedding cache + pgvector
   gives sub-10 ms; for *novel* queries both systems are embedding-bound (~300–400 ms,
   see §1). Mem0 does not appear to cache identical queries in this run.
-- **Quality is tied (8/8)** on this small set — which means *this benchmark cannot
-  yet differentiate extraction quality*. A real quality claim needs a large
-  labeled set (e.g. LOCOMO / LongMemEval). Do not over-read 8/8.
+- **For real quality, see §4** — this section is latency only; the keyword probe
+  here can't differentiate quality.
 
-## 4. Durability (at-least-once delivery)
+## 4. Quality: head-to-head recall (multi-session eval)
+
+A LOCOMO-style eval (`bench/quality/`): 4 personas, multi-session conversations,
+24 questions. Every system gets the same conversations; the pipeline per question
+is identical — **retrieve top-k → answer using only those memories → LLM-judge** —
+so the only variable measured is *what each system remembered*. Question types:
+`single` (stated once), `update` (a fact changed; latest should win), `preference`,
+and `absent` (never stated → the system must **abstain**; this is the hallucination
+test). Same models for both (`gpt-4o-mini` + `text-embedding-3-small`).
+
+| System | Overall | single | update | preference | absent (no-hallucination) |
+|---|---|---|---|---|---|
+| **Memgram** | **96%** (23/24) | 100% | 80% | 100% | 100% |
+| **Mem0** | **96%** (23/24) | 100% | 80% | 100% | 100% |
+
+**Honest reading:**
+
+- **Memgram is at parity with Mem0** on this eval — including a perfect
+  hallucination score (both correctly abstain on all `absent` questions).
+- **Both share one weakness: temporal updates.** The single miss for each is the
+  same — a user promoted from "backend engineer" to "tech lead"; both systems
+  retrieve the *stale* role. Similarity-based memory reinforces/duplicates but
+  doesn't *supersede* a contradicted fact. This is the concrete motivation for
+  contradiction-resolution / memory versioning (see the roadmap).
+- **This is a small set (24 Q).** It's enough to show parity and to surface the
+  temporal weakness, not enough for a leaderboard claim — run full LOCOMO /
+  LongMemEval through the same harness (the dataset shape is compatible) to scale it.
+
+> Reproduce: `OPENAI_API_KEY=sk-... python bench/quality/run_eval.py`
+> Per-question detail is written to `bench/quality/results.json`.
+
+### Systems compared (and why some are deferred)
+- **Mem0** — clean memory API (`add`/`search`); a true drop-in adapter, included.
+- **Letta (MemGPT) / Zep** — *agent/service* frameworks: memory lives inside an
+  agent loop or a separate server, so there's no equivalent "ingest → retrieve"
+  call and each needs its own running service (and an isolated env to avoid
+  dependency conflicts). The harness is pluggable (`bench/quality/adapters.py`,
+  `ADAPTERS`); adding them is a contained task but out of scope for this first,
+  apples-to-apples pass. Documented rather than faked.
+
+## 5. Durability (at-least-once delivery)
 
 The job queue uses Valkey **Streams + consumer groups**. Verified live: a job
 stranded in a crashed worker's pending list (delivered, never acked) is reclaimed

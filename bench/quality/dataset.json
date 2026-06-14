@@ -1,0 +1,103 @@
+{
+  "_about": "Memgram quality eval set v1. LOCOMO-style: multi-session conversations per persona, then questions whose answers must be recalled from memory. Question types: single (stated once), multi (must combine/recall across sessions), update (a fact changed over time -> latest wins), preference, absent (never stated -> the system MUST abstain; this catches hallucination). Swap in the real LOCOMO JSON via the same shape to scale up.",
+  "cases": [
+    {
+      "persona": "alice",
+      "sessions": [
+        [
+          "I just started a new job as a backend engineer at Acme Robotics.",
+          "I mostly write Go, but the legacy services are in Python.",
+          "Please keep your answers short and to the point."
+        ],
+        [
+          "We're migrating the billing service from Python to Go this quarter.",
+          "I live in Berlin, though I'm originally from Lisbon.",
+          "I'm allergic to peanuts, so recipe suggestions should avoid them."
+        ],
+        [
+          "Quick update: I got promoted to tech lead last week.",
+          "Also I moved — I now live in Munich, not Berlin anymore."
+        ]
+      ],
+      "questions": [
+        {"q": "What programming language does the user primarily write?", "expect": "Go", "type": "single"},
+        {"q": "What company does the user work at?", "expect": "Acme Robotics", "type": "single"},
+        {"q": "What city does the user currently live in?", "expect": "Munich", "type": "update"},
+        {"q": "What is the user's current role/title?", "expect": "tech lead", "type": "update"},
+        {"q": "What food allergy should be considered?", "expect": "peanuts", "type": "single"},
+        {"q": "What is the user's preferred answer style?", "expect": "short / concise", "type": "preference"},
+        {"q": "What kind of pet does the user have?", "expect": "NO_INFO", "type": "absent"}
+      ]
+    },
+    {
+      "persona": "ben",
+      "sessions": [
+        [
+          "I'm building a mobile game in Unity with C#.",
+          "My target launch is the App Store first, Android later.",
+          "I prefer detailed explanations with code examples."
+        ],
+        [
+          "I decided to switch the backend from Firebase to Supabase for cost reasons.",
+          "I'm based in Toronto and work in the Eastern time zone.",
+          "My budget for cloud is about 200 dollars a month."
+        ]
+      ],
+      "questions": [
+        {"q": "What engine and language is the user using for the game?", "expect": "Unity / C#", "type": "single"},
+        {"q": "Which backend did the user switch TO?", "expect": "Supabase", "type": "update"},
+        {"q": "What time zone does the user work in?", "expect": "Eastern", "type": "single"},
+        {"q": "What is the user's monthly cloud budget?", "expect": "200 dollars", "type": "single"},
+        {"q": "How does the user like answers formatted?", "expect": "detailed with code examples", "type": "preference"},
+        {"q": "What is the user's spouse's name?", "expect": "NO_INFO", "type": "absent"}
+      ]
+    },
+    {
+      "persona": "carmen",
+      "sessions": [
+        [
+          "I'm a data scientist working mostly in Python with pandas and scikit-learn.",
+          "I'm doing research on churn prediction for a telecom client."
+        ],
+        [
+          "I've started using PyTorch for a deep learning side of the project.",
+          "I'm vegetarian, so keep that in mind for any team-lunch ideas.",
+          "I usually deploy models on Fridays."
+        ],
+        [
+          "The churn project wrapped up; now I'm on a fraud-detection project.",
+          "I switched my deploy day to Tuesdays after a few bad Friday incidents."
+        ]
+      ],
+      "questions": [
+        {"q": "What is the user's profession?", "expect": "data scientist", "type": "single"},
+        {"q": "What project is the user CURRENTLY working on?", "expect": "fraud detection", "type": "update"},
+        {"q": "Which deep learning framework does the user use?", "expect": "PyTorch", "type": "single"},
+        {"q": "What day does the user now deploy on?", "expect": "Tuesday", "type": "update"},
+        {"q": "What is the user's dietary preference?", "expect": "vegetarian", "type": "single"},
+        {"q": "What car does the user drive?", "expect": "NO_INFO", "type": "absent"}
+      ]
+    },
+    {
+      "persona": "deepak",
+      "sessions": [
+        [
+          "I run a small e-commerce store selling handmade leather goods.",
+          "I use Shopify and want help with marketing copy.",
+          "Write in a warm, friendly tone, not corporate."
+        ],
+        [
+          "My best seller is a minimalist cardholder; the wallets sell slowly.",
+          "I'm expanding to the US market next month; currently I'm only in India."
+        ]
+      ],
+      "questions": [
+        {"q": "What platform does the user's store run on?", "expect": "Shopify", "type": "single"},
+        {"q": "What is the user's best-selling product?", "expect": "cardholder", "type": "single"},
+        {"q": "Which new market is the user expanding to?", "expect": "US", "type": "single"},
+        {"q": "What tone does the user want in writing?", "expect": "warm / friendly", "type": "preference"},
+        {"q": "How many employees does the user have?", "expect": "NO_INFO", "type": "absent"}
+      ]
+    }
+  ]
+}
