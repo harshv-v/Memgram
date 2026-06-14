@@ -1,0 +1,82 @@
+# Memgram — full self-hosted stack. One command: `docker compose up`.
+#
+#   db      Postgres 16 + pgvector  (vectors + relational; AGE graph is opt-in,
+#           see docker/postgres-age.Dockerfile)
+#   queue   Valkey (the open-source Redis fork; our code is protocol-compatible)
+#   migrate one-shot: applies SQL migrations, then exits
+#   api     FastAPI backend on :8000
+#   worker  background agents (extract / summarize / reflect / propose / decay)
+#
+# Reads .env automatically. Copy .env.example -> .env first.
+
+x-app-env: &app-env
+  DATABASE_URL: postgresql://memgram:memgram@db:5432/memgram
+  REDIS_URL: redis://queue:6379/0
+  MEMGRAM_API_KEY: ${MEMGRAM_API_KEY:-mgram_dev_key}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  MEMGRAM_LLM_BASE_URL: ${MEMGRAM_LLM_BASE_URL:-}
+  MEMGRAM_EMBED_DIMS: ${MEMGRAM_EMBED_DIMS:-1536}
+  MEMGRAM_FAKE_LLM: ${MEMGRAM_FAKE_LLM:-}
+  MEMGRAM_WEBHOOK_ON_PROPOSAL: ${MEMGRAM_WEBHOOK_ON_PROPOSAL:-}
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    # To enable the Apache AGE graph layer instead, comment the line above and:
+    # build: { context: ., dockerfile: docker/postgres-age.Dockerfile }
+    environment:
+      POSTGRES_USER: memgram
+      POSTGRES_PASSWORD: memgram
+      POSTGRES_DB: memgram
+    # Host port defaults to the standard 5432; override (e.g. MEMGRAM_DB_PORT=5433)
+    # in .env if something else already binds it. Container port is always 5432.
+    ports: ["${MEMGRAM_DB_PORT:-5432}:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U memgram"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  queue:
+    image: valkey/valkey:8-alpine
+    ports: ["${MEMGRAM_QUEUE_PORT:-6379}:6379"]
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    build: { context: ., dockerfile: docker/Dockerfile }
+    environment: *app-env
+    command: ["python", "-m", "memgram.memory.migrate"]
+    depends_on:
+      db: { condition: service_healthy }
+
+  api:
+    build: { context: ., dockerfile: docker/Dockerfile }
+    # Runtime connects as the non-superuser app role so RLS is actually enforced
+    # (migration 005). Only `migrate` above keeps the superuser, for DDL.
+    environment:
+      <<: *app-env
+      DATABASE_URL: postgresql://memgram_app:memgram_app@db:5432/memgram
+    ports: ["8000:8000"]
+    depends_on:
+      db: { condition: service_healthy }
+      queue: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+
+  worker:
+    build: { context: ., dockerfile: docker/Dockerfile }
+    environment:
+      <<: *app-env
+      DATABASE_URL: postgresql://memgram_app:memgram_app@db:5432/memgram
+    command: ["python", "-m", "memgram.worker"]
+    depends_on:
+      db: { condition: service_healthy }
+      queue: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+
+volumes:
+  pgdata:

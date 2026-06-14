@@ -1,0 +1,35 @@
+# Keep the build context small and reproducible — the image installs the package
+# and runs the API/worker; none of the below belongs in it.
+.git
+.gitignore
+**/__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.env
+.env.local
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Dashboard (built and run separately, not inside the API image)
+dashboard/node_modules/
+dashboard/.next/
+dashboard/out/
+
+# Docs / binaries that don't affect the runtime image
+*.docx
+*.pptx
+*.pdf
+
+# Local data
+pgdata/
+*.sqlite
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

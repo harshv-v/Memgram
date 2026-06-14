@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "memgram"
+version = "0.1.0"
+description = "Zero-config cognitive memory layer for AI agents. Wrap your LLM call - memory works instantly."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Harsha Vanukuri" }]
+keywords = ["llm", "memory", "agents", "ai", "openai", "rag", "pgvector"]
+requires-python = ">=3.10"
+dependencies = ["openai>=1.0", "httpx>=0.27", "pydantic>=2.0"]
+
+[project.urls]
+Homepage = "https://github.com/your-org/memgram"
+Issues = "https://github.com/your-org/memgram/issues"
+
+[project.optional-dependencies]
+backend = [
+  "fastapi>=0.111", "uvicorn>=0.30", "asyncpg>=0.29",
+  "redis>=5.0", "pgvector>=0.3", "python-jose>=3.3",
+]
+dev = ["fakeredis>=2.20", "pytest>=8.0"]
+
+[tool.setuptools.packages.find]
+include = ["memgram*"]
