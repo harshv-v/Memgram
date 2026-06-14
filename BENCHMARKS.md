@@ -62,8 +62,8 @@ alone would be misleading.
 - **Write path is a philosophy difference, not a win.** Mem0 blocks the caller
   ~2.3 s to extract, but the memory is instantly searchable. Memgram returns in
   ~59 ms and extracts in the background — far better *user-facing* latency, at the
-  cost of an ~18 s freshness lag here (8 jobs processed serially by a single
-  worker; concurrent workers would cut this sharply).
+  cost of a freshness lag. With the concurrent worker (8 consumers) that lag is
+  **~4.7 s** for 8 facts; it was ~18 s when the worker processed jobs serially.
 - **Search:** for *repeated* queries Memgram's in-process embedding cache + pgvector
   gives sub-10 ms; for *novel* queries both systems are embedding-bound (~300–400 ms,
   see §1). Mem0 does not appear to cache identical queries in this run.

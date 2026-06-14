@@ -20,6 +20,9 @@ class _FakeCompletions:
     async def create(self, model=None, messages=None, response_format=None, **kw):
         system = messages[0]["content"] if messages else ""
         user = messages[-1]["content"] if messages else ""
+        if "fact-checker" in system:
+            # faithfulness pass: in tests, treat every candidate as supported
+            return _Resp(json.dumps({"supported": list(range(50))}))
         if "extract long-term memories" in system:
             out = {"facts": [], "preferences": [], "entities": [], "corrections": []}
             low = user.lower()

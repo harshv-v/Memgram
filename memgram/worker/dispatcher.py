@@ -3,7 +3,6 @@ framework' is this dict and a loop."""
 import asyncio
 import logging
 import os
-import time
 
 from memgram.agents.decay import DecayAgent
 from memgram.agents.extractor import ExtractorAgent
@@ -47,6 +46,8 @@ class Dispatcher:
         self.reclaim_every = float(config.get("reclaim_every_s", 30))
         self.reclaim_idle_ms = int(config.get("reclaim_idle_ms", 60_000))
         self.max_deliveries = int(config.get("max_deliveries", 5))
+        # how many jobs to process at once (consumer-group members in one process)
+        self.concurrency = max(1, int(config.get("concurrency", 8)))
 
     async def handle(self, job: dict):
         """Run the job's agent. Returns the agent result; None means the agent
@@ -100,8 +101,15 @@ class Dispatcher:
             await self._process(job)
 
     async def run_forever(self, poll_timeout: int = 5) -> None:
-        logger.info("memgram worker started")
-        last_reclaim = 0.0
+        logger.info("memgram worker started (concurrency=%d)", self.concurrency)
+        # N consumer loops process jobs in parallel (each is a member of the same
+        # Streams group, so the stream load-balances across them) + 1 reclaimer.
+        tasks = [asyncio.create_task(self._consume_loop(poll_timeout))
+                 for _ in range(self.concurrency)]
+        tasks.append(asyncio.create_task(self._reclaim_loop()))
+        await asyncio.gather(*tasks)
+
+    async def _consume_loop(self, poll_timeout: int) -> None:
         while True:
             try:
                 job = await asyncio.to_thread(self.queue.dequeue, poll_timeout)
@@ -112,12 +120,11 @@ class Dispatcher:
                 continue
             if job is not None:
                 await self._process(job)
-                continue
-            # Idle: periodically reclaim jobs stranded by a crashed worker.
-            now = time.monotonic()
-            if now - last_reclaim >= self.reclaim_every:
-                last_reclaim = now
-                await self._reclaim_stale()
+
+    async def _reclaim_loop(self) -> None:
+        while True:
+            await asyncio.sleep(self.reclaim_every)
+            await self._reclaim_stale()
 
     async def drain(self) -> int:
         """Process everything currently queued, then return. Used by tests."""

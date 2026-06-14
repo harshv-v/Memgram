@@ -25,6 +25,7 @@ def worker_config() -> dict:
         "reflection": {"habit_threshold": s["decay"]["habit_threshold"]},
         "decay": {"demotion_days": s["decay"]["demotion_days"]},
         "reflect_every_hrs": s["reflection"]["trigger_every_hrs"],
+        "concurrency": int(os.environ.get("MEMGRAM_WORKER_CONCURRENCY", "8")),
     }
 
 
