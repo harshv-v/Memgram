@@ -156,6 +156,34 @@ DATABASE_URL=postgresql://memgram:memgram@localhost:5432/memgram \
   MEMGRAM_FAKE_LLM=1 MEMGRAM_FAKE_REDIS=1 python tests/test_pipeline.py
 ```
 
+## For reviewers / testers
+
+Thanks for trying Memgram. The fastest way to see what it does:
+
+```bash
+git clone https://github.com/harshv-v/Memgram.git && cd Memgram
+cp .env.example .env          # paste your OPENAI_API_KEY (or set MEMGRAM_FAKE_LLM=1)
+docker compose up --build     # db + queue + migrate + api + worker
+
+pip install -e .
+OPENAI_API_KEY=sk-...  python examples/qa_rag_app.py   # memory forms, recalls, isolates
+cd dashboard && npm install && npm run dev             # http://localhost:3000
+```
+
+`examples/demo_persistence.py` is the 30-second version: tell it your stack in
+one process, restart, and it already knows in the next.
+
+**What I'd love feedback on (open an Issue):**
+
+- **Extraction quality** — are the facts/preferences it pulls from your real
+  conversations the *right* ones? Too aggressive, too sparse, wrong?
+- **The habit threshold** — a preference is proposed as a permanent instruction
+  after 7 reinforcements. Does 7 feel right for your usage?
+- **Integration friction** — was the two-line wrap actually drop-in for your app?
+- **Anything that broke** — paste the error; the worker/API logs help a lot.
+
+Issues and PRs welcome. If something doesn't run, that's the most useful bug of all.
+
 ## Security & trust
 
 Agents can **never** write an active instruction — only `status='pending'` proposals;
