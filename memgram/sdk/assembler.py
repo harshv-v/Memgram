@@ -43,10 +43,16 @@ def _format_semantic(memories: list[dict]) -> str | None:
     return _SEM_HEADER + "\n".join(lines)
 
 
-def _last_user_text(messages: list[dict]) -> str:
+def _mget(m, k):
+    """Messages may be dicts OR OpenAI SDK objects (devs append response messages
+    back into the list in tool loops). Read either shape safely."""
+    return m.get(k) if isinstance(m, dict) else getattr(m, k, None)
+
+
+def _last_user_text(messages: list) -> str:
     for m in reversed(messages):
-        if m.get("role") == "user" and isinstance(m.get("content"), str):
-            return m["content"]
+        if _mget(m, "role") == "user" and isinstance(_mget(m, "content"), str):
+            return _mget(m, "content")
     return ""
 
 
@@ -59,7 +65,7 @@ def _inject(messages: list[dict], instr_block: str | None,
     if instr_block is not None:                         # 1. instructions, first
         result.append({"role": "system", "content": instr_block})
     rest = msgs
-    if msgs and msgs[0].get("role") == "system":        # 2. dev system prompt, kept
+    if msgs and _mget(msgs[0], "role") == "system":     # 2. dev system prompt, kept
         result.append(msgs[0])
         rest = msgs[1:]
     if sem_block is not None:                           # 3. semantic, after dev system

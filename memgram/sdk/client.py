@@ -91,17 +91,41 @@ class MemgramAPIClient:
         return r.json()
 
 
-def _clean(messages: list[dict]) -> list[dict]:
-    """Strip injected memory system-blocks before logging — we only persist the
-    developer's own turns, never our own injected context (avoids feedback loops)."""
+def _attr(o, k):
+    """Read a field from either a dict or an OpenAI SDK message/tool object."""
+    return o.get(k) if isinstance(o, dict) else getattr(o, k, None)
+
+
+def _clean(messages: list) -> list[dict]:
+    """Normalize the turns we persist. Strips our own injected memory blocks
+    (avoids feedback loops) and flattens tool usage into loggable text turns:
+    an assistant tool call becomes a `tool_call` turn and a tool result becomes
+    a `tool_result` turn — so procedural memory can learn from what tools did."""
     out = []
     for m in messages:
-        c = m.get("content")
+        role = _attr(m, "role")
+        # assistant tool call: content is usually None — preserve the call itself
+        tool_calls = _attr(m, "tool_calls")
+        if role == "assistant" and tool_calls:
+            calls = []
+            for tc in tool_calls:
+                fn = _attr(tc, "function") or {}
+                name = _attr(fn, "name") or "tool"
+                args = _attr(fn, "arguments") or ""
+                calls.append(f"{name}({args})")
+            out.append({"role": "tool_call", "content": "; ".join(calls)})
+            continue
+        c = _attr(m, "content")
+        if role == "tool" and isinstance(c, str):  # tool result
+            # Tool outputs can be huge (a full API payload). Store a digest, not
+            # the raw blob — we only need enough to learn the success/failure shape.
+            out.append({"role": "tool_result", "content": c[:800]})
+            continue
         if not isinstance(c, str):
             continue
-        if m.get("role") == "system" and (
+        if role == "system" and (
             c.startswith("## User memory") or c.startswith("## Relevant memory")
         ):
             continue
-        out.append({"role": m["role"], "content": c})
+        out.append({"role": role, "content": c})
     return out

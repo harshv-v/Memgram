@@ -91,6 +91,8 @@ OPENAI_API_KEY=sk-... python bench/quality/run_eval.py # recall quality vs Mem0
 | Hallucination | extractor faithfulness gate drops unsupported facts; provenance stored | kept real facts, dropped invented ones |
 | Multi-tenancy | RLS enforced via non-superuser role; per-request `app.current_user_id` | alice can't read bob even with explicit WHERE |
 | Trust gate | agents can only write `status='pending'` instructions | enforced at API; pipeline test asserts it |
+| Tool/procedural memory | tool calls captured to episodic; procedural agent distills tool lessons (opt-in via `coding` preset) | verified: tool failure → procedure memory |
+| Memory-bulk control | dedup→reinforce at write; one extract per completed turn; current-exchange-only logging; tool-result truncation | clean single-exchange capture verified |
 | Quality | 96% (23/24) on the multi-session eval, tied with Mem0 | `bench/quality` |
 
 ## 6. What's deliberately NOT done (known gaps)
@@ -109,7 +111,9 @@ Be honest with users about these:
 - **Dual-write gap.** `/v1/ingest` writes the episodic row and enqueues separately
   (not atomic). An outbox pattern would close it.
 - **Ecosystem.** Python SDK only (no JS/TS); no streaming post-hook handling; no
-  framework adapters; procedural memory is opt-in/unproven.
+  framework adapters. (Mem0 now leads here — async-by-default, TS SDK, ~21
+  integrations.) Procedural/tool memory works but only for OpenAI-style tool loops
+  that round-trip through the wrapped client.
 - **Faithfulness cost.** The gate doubles extraction LLM calls (extract + verify).
 
 ## 7. Extending it

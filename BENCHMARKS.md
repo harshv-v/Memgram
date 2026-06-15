@@ -44,10 +44,16 @@ embedding-bound, not search-bound.
 
 ## 3. Head-to-head: Memgram vs Mem0
 
-Same models, same 8 labeled conversations. **Mem0 `add()` is synchronous**
-(extraction inline) while **Memgram ingest is async** (background worker), so the
-write path is reported asymmetrically — comparing Mem0's add to Memgram's ack
-alone would be misleading.
+Same models, same 8 labeled conversations. This run used **Mem0's synchronous
+`add()`** (extraction inline) vs **Memgram's async ingest** (background worker),
+so the write path is reported asymmetrically.
+
+> **Correction (June 2026):** Mem0 now defaults to **async** memory writes
+> (`async_mode=True`, and an `AsyncMemory` API) — the numbers below reflect the
+> *sync* `add()` path this harness called, **not** Mem0's fastest mode. So don't
+> read the write-latency gap as inherent; both systems have a non-blocking path.
+> The fair, like-for-like comparison is the **search latency** and the
+> **quality eval (§4)**, which don't depend on this.
 
 | Axis | Mem0 | Memgram |
 |---|---|---|

@@ -6,6 +6,7 @@ import os
 
 from memgram.agents.decay import DecayAgent
 from memgram.agents.extractor import ExtractorAgent
+from memgram.agents.procedural import ProceduralAgent
 from memgram.agents.proposer import ProposerAgent
 from memgram.agents.reflection import ReflectionAgent
 from memgram.agents.summarizer import SummarizerAgent
@@ -38,6 +39,7 @@ class Dispatcher:
             "reflect":   ReflectionAgent(store, config.get("reflection"), llm, queue=queue),
             "propose":   ProposerAgent(store, config.get("proposer"), llm, embedder=embedder),
             "decay":     DecayAgent(store, config.get("decay")),
+            "procedural": ProceduralAgent(store, config.get("procedural"), llm),
         }
         # extract jobs count toward the reflection cadence
         self.reflect_every = int(config.get("reflect_every_n", 20))
@@ -68,6 +70,13 @@ class Dispatcher:
                     "project_id": p["project_id"], "user_id": p["user_id"],
                     "agent_id": p["agent_id"],
                 })
+
+        # If tools were used and procedural memory is on, learn from them.
+        if job["type"] == "extract" and self.features.get("procedural", False):
+            p = job["payload"]
+            if any(m.get("role") in ("tool_call", "tool_result")
+                   for m in p.get("messages", [])):
+                self.queue.enqueue("procedural", p)
         return result
 
     async def _process(self, job: dict) -> None:

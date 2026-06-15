@@ -35,14 +35,25 @@ def _est_tokens(messages: list[dict]) -> int:
 
 @router.post("", status_code=202)
 async def ingest(request: Request, body: IngestBody):
+    # Act only on a COMPLETED turn (the model produced a final answer). An
+    # intermediate tool round-trip has no response_text; we skip it entirely
+    # because the completed turn's message list already carries the full exchange
+    # (user + tool_call + tool_result). This means a K-call tool loop logs and
+    # extracts ONCE, not K times — bulk controlled at the source.
+    if not body.response_text:
+        return {"queued": False, "reason": "incomplete turn (tool round-trip)"}
+
     store = request.app.state.store
-    for m in body.messages:
-        if m.get("role") == "user" and isinstance(m.get("content"), str):
+    # Log only the CURRENT exchange — from the last user message to the end — not
+    # the whole accumulated history an app may resend each turn.
+    msgs = body.messages
+    last_user = max((i for i, m in enumerate(msgs) if m.get("role") == "user"), default=0)
+    for m in msgs[last_user:]:
+        if m.get("role") in ("user", "tool_call", "tool_result") and isinstance(m.get("content"), str):
             await store.log_episodic(body.project_id, body.agent_id, body.user_id,
-                                     "user", m["content"])
-    if body.response_text:
-        await store.log_episodic(body.project_id, body.agent_id, body.user_id,
-                                 "assistant", body.response_text)
+                                     m["role"], m["content"])
+    await store.log_episodic(body.project_id, body.agent_id, body.user_id,
+                             "assistant", body.response_text)
 
     queue = request.app.state.queue
     job_id = queue.enqueue("extract", body.model_dump())

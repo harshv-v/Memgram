@@ -185,7 +185,8 @@ one process, restart, and it already knows in the next.
 Issues and PRs welcome. If something doesn't run, that's the most useful bug of all.
 
 For a full engineering walkthrough (architecture, what's hardened, known gaps, how
-to extend) see **[HANDOVER.md](HANDOVER.md)**; for measured numbers see
+to extend) see **[HANDOVER.md](HANDOVER.md)**; for the *why* behind each design
+decision see **[DESIGN.md](DESIGN.md)**; for measured numbers see
 **[BENCHMARKS.md](BENCHMARKS.md)**.
 
 ## Security & trust

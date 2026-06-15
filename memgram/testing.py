@@ -23,6 +23,11 @@ class _FakeCompletions:
         if "fact-checker" in system:
             # faithfulness pass: in tests, treat every candidate as supported
             return _Resp(json.dumps({"supported": list(range(50))}))
+        if "PROCEDURAL lessons" in system:
+            procs = []
+            if "tool" in user.lower() or "(" in user:
+                procs.append({"content": "The search tool fails without a date filter; always include one."})
+            return _Resp(json.dumps({"procedures": procs}))
         if "extract long-term memories" in system:
             out = {"facts": [], "preferences": [], "entities": [], "corrections": []}
             low = user.lower()
