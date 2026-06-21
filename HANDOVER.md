@@ -156,7 +156,9 @@ docker/        API image + opt-in Postgres+pgvector+AGE image
 | `MEMGRAM_API_KEY` | bearer token the SDK uses to call the API | `mgram_dev_key` |
 | `DATABASE_URL` / `REDIS_URL` | Postgres / Valkey connection | compose-wired |
 | `MEMGRAM_DB_PORT` / `MEMGRAM_QUEUE_PORT` | host port remap if 5432/6379 are taken | 5432 / 6379 |
-| `MEMGRAM_EMBED_DIMS` / `MEMGRAM_EMBED_MODEL` | embedding dims/model (dims set before first migrate) | 1536 / text-embedding-3-small |
+| `MEMGRAM_EMBEDDER` | `openai` (1536d, ~300ms/query) \| `local` (384d ONNX in-process, ~10ms, private) \| `fake` | auto |
+| `MEMGRAM_EMBED_DIMS` / `MEMGRAM_EMBED_MODEL` | embedding dims/model (dims set before first migrate; 384 for local, 1536 for openai) | 1536 / text-embedding-3-small |
+| `MEMGRAM_LOCAL_EMBED_MODEL` | fastembed model for the local backend | BAAI/bge-small-en-v1.5 |
 | `MEMGRAM_FAST_MODEL` / `MEMGRAM_QUALITY_MODEL` | extractor/summarizer vs reflection/proposer | gpt-4o-mini / gpt-4o |
 | `MEMGRAM_LLM_BASE_URL` | OpenAI-compatible endpoint (local models) | OpenAI default |
 | `MEMGRAM_PRESET` | minimal\|chatbot\|coding\|enterprise\|privacy\|custom | (defaults) |

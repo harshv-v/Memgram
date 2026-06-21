@@ -13,7 +13,7 @@
       "type": "single",
       "q": "What company does the user work at?",
       "expect": "Acme Robotics",
-      "pred": "Acme Robotics.",
+      "pred": "Acme Robotics",
       "ok": true
     },
     {
@@ -29,7 +29,7 @@
       "type": "update",
       "q": "What is the user's current role/title?",
       "expect": "tech lead",
-      "pred": "Backend Engineer",
+      "pred": "Backend engineer at Acme Robotics.",
       "ok": false
     },
     {
@@ -133,7 +133,7 @@
       "type": "update",
       "q": "What day does the user now deploy on?",
       "expect": "Tuesday",
-      "pred": "Tuesdays",
+      "pred": "Tuesdays.",
       "ok": true
     },
     {
@@ -157,7 +157,7 @@
       "type": "single",
       "q": "What platform does the user's store run on?",
       "expect": "Shopify",
-      "pred": "Shopify.",
+      "pred": "Shopify",
       "ok": true
     },
     {
@@ -223,15 +223,15 @@
       "type": "update",
       "q": "What is the user's current role/title?",
       "expect": "tech lead",
-      "pred": "Backend engineer",
-      "ok": false
+      "pred": "Tech lead.",
+      "ok": true
     },
     {
       "persona": "alice",
       "type": "single",
       "q": "What food allergy should be considered?",
       "expect": "peanuts",
-      "pred": "Peanut allergy.",
+      "pred": "NO_INFO",
       "ok": true
     },
     {
@@ -239,7 +239,7 @@
       "type": "preference",
       "q": "What is the user's preferred answer style?",
       "expect": "short / concise",
-      "pred": "Concise answers.",
+      "pred": "Short and to-the-point.",
       "ok": true
     },
     {
@@ -335,7 +335,7 @@
       "type": "single",
       "q": "What is the user's dietary preference?",
       "expect": "vegetarian",
-      "pred": "Vegetarian.",
+      "pred": "Vegetarian",
       "ok": true
     },
     {

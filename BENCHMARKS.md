@@ -24,9 +24,25 @@ latency). It measures exactly what it inserts into the request path.
 
 **Takeaway:** the **embedding round-trip to OpenAI (~300 ms) dominates** the hot
 path. Memgram's own infrastructure (Valkey cache + pgvector) is the small part —
-instruction injection is effectively free at ~2 ms. The single highest-leverage
-optimization is a shared embedding cache or a local embedding model (the
-`MEMGRAM_LLM_BASE_URL` / `MEMGRAM_EMBED_MODEL` escape hatch already exists).
+instruction injection is effectively free at ~2 ms.
+
+### In-process local embedder (the fix) — `MEMGRAM_EMBEDDER=local`
+
+Loading a small ONNX model (fastembed `bge-small-en-v1.5`, 384-dim) **into the API
+and worker** removes the network hop entirely. Same machine, same benchmark:
+
+| Semantic search (10k corpus) | OpenAI (1536-dim) | **Local (384-dim)** |
+|---|---|---|
+| full = embed + pgvector, p50 | 346 ms | **37.8 ms** |
+| embedding portion (`fresh − cached`) | ~300 ms | **~12 ms** |
+| at 100 rows, full p50 | ~317 ms | **~21 ms** |
+
+~**10× faster hot-path search**, no external dependency, data never leaves the box.
+**And it cost ~nothing in recall:** Memgram scored the same **96%** on the quality
+eval (§4) with the local embedder as with OpenAI. Caveat: 384-dim is generally
+weaker than 1536-dim and a 24-question eval can't catch subtle loss — confirm with
+a larger eval before assuming zero cost. OpenAI remains available
+(`MEMGRAM_EMBEDDER=openai`) for max quality.
 
 ## 2. Search scaling (pgvector HNSW)
 

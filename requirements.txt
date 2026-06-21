@@ -9,5 +9,6 @@ asyncpg>=0.29
 redis>=5.0
 pgvector>=0.3
 python-jose>=3.3
+fastembed>=0.3        # in-process ONNX embeddings (local, no network hop)
 # Dev / zero-infra testing
 fakeredis>=2.20
