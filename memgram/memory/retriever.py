@@ -39,6 +39,7 @@ class Retriever:
                 WHERE project_id = $1 AND user_id = $2 AND agent_id = $3
                   AND scope IN ('global', $5)
                   AND memory_tier != 'archived'
+                  AND superseded_by IS NULL
                 ORDER BY rank DESC
                 LIMIT $6
                 """,

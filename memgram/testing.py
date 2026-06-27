@@ -28,6 +28,9 @@ class _FakeCompletions:
             if "tool" in user.lower() or "(" in user:
                 procs.append({"content": "The search tool fails without a date filter; always include one."})
             return _Resp(json.dumps({"procedures": procs}))
+        if "makes an EXISTING memory obsolete" in system:
+            # contradiction check: tests don't exercise supersession -> nothing obsolete
+            return _Resp(json.dumps({"superseded": []}))
         if "extract long-term memories" in system:
             out = {"facts": [], "preferences": [], "entities": [], "corrections": []}
             low = user.lower()

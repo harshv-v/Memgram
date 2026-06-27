@@ -22,7 +22,8 @@ UPDATE semantic_memories SET
     WHEN retention_score >  0.1 THEN 'fading'
     ELSE 'archived'
   END
-WHERE memory_tier NOT IN ('promoted');
+WHERE memory_tier NOT IN ('promoted')
+  AND superseded_by IS NULL;  -- never resurrect a superseded (deprecated) fact
 """
 
 DEMOTION_SQL = """

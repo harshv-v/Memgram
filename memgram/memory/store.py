@@ -73,6 +73,43 @@ class MemoryStore:
                 )
                 return {"id": str(row["id"]), "action": "created", "reinforcement_count": 1}
 
+    # -- contradiction / supersession --------------------------------------
+    async def find_similar_active(
+        self, project_id: str, agent_id: str, user_id: str, content: str,
+        limit: int = 5, max_distance: float = 0.45,
+    ) -> list[dict]:
+        """Active, non-superseded memories semantically NEAR `content` but not
+        exact duplicates — i.e. supersession *candidates* (e.g. an old city vs a
+        new one). Distance only nominates; the LLM decides if it's a real update."""
+        emb = to_pgvector(await self.embedder.embed(content))
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT id, content, embedding <=> $4::vector AS dist
+                FROM semantic_memories
+                WHERE project_id = $1 AND user_id = $2 AND agent_id = $3
+                  AND memory_tier != 'archived' AND superseded_by IS NULL
+                ORDER BY embedding <=> $4::vector
+                LIMIT $5
+                """,
+                project_id, user_id, agent_id, emb, limit,
+            )
+        return [{"id": str(r["id"]), "content": r["content"], "dist": float(r["dist"])}
+                for r in rows if DEDUP_DISTANCE <= float(r["dist"]) <= max_distance]
+
+    async def supersede(self, old_id: str, new_id: str) -> None:
+        """Deprecate a stale memory: link it to its replacement and archive it.
+        Archived + superseded means retrieval, dedup, and decay all skip it."""
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                """
+                UPDATE semantic_memories
+                SET superseded_by = $2, memory_tier = 'archived'
+                WHERE id = $1
+                """,
+                old_id, new_id,
+            )
+
     # -- episodic -------------------------------------------------------------
     async def log_episodic(
         self, project_id: str, agent_id: str, user_id: str,
