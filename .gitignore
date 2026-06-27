@@ -45,3 +45,6 @@ pgdata/
 
 # Consolidated code dumps (derived artifact from consolidate.py)
 memgram_code_*.txt
+
+# Research papers (large PDFs; index is in research/papers/README.md)
+research/papers/*.pdf
