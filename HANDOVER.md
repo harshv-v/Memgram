@@ -93,6 +93,8 @@ OPENAI_API_KEY=sk-... python bench/quality/run_eval.py # recall quality vs Mem0
 | Trust gate | agents can only write `status='pending'` instructions | enforced at API; pipeline test asserts it |
 | Tool/procedural memory | tool calls captured to episodic; procedural agent distills tool lessons (opt-in via `coding` preset) | verified: tool failure → procedure memory |
 | Memory-bulk control | dedup→reinforce at write; one extract per completed turn; current-exchange-only logging; tool-result truncation | clean single-exchange capture verified |
+| Portability ("pendrive") | `GET /v1/memory/export` + `POST /v1/memory/import` (re-embeds → dimension-portable); CLI `examples/portable_memory.py`; dashboard Download button | export→import round-trip verified across projects |
+| Transparency UI | dashboard shows scope (shared/project/private), tier, superseded, live auto-refresh | dashboard builds + serves |
 | Quality | 96% (23/24) on the multi-session eval, tied with Mem0 | `bench/quality` |
 
 ## 6. What's deliberately NOT done (known gaps)

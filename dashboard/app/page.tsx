@@ -134,20 +134,51 @@ function Instructions({ cfg, onErr }: { cfg: Cfg; onErr: (s: string) => void }) 
 }
 
 // ---- Memories --------------------------------------------------------------
+const SCOPE_LABEL: Record<string, string> = {
+  global: "shared · all agents", project: "shared · project", private: "private · this agent",
+};
+
 function Memories({ cfg, onErr }: { cfg: Cfg; onErr: (s: string) => void }) {
   const api = useApi(cfg);
   const [items, setItems] = useState<any[]>([]);
+  const [live, setLive] = useState(false);
   const load = useCallback(() => {
     api(`/v1/memory?${q(cfg)}&limit=200`).then((d) => setItems(d.memories)).catch((e) => onErr(String(e)));
   }, [api, cfg, onErr]);
   useEffect(load, [load]);
+  // real-time: poll every 3s while "live" is on, so memories appear as the worker adds them
+  useEffect(() => {
+    if (!live) return;
+    const t = setInterval(load, 3000);
+    return () => clearInterval(t);
+  }, [live, load]);
   const del = async (id: string) => { try { await api(`/v1/memory/${id}`, { method: "DELETE" }); load(); } catch (e) { onErr(String(e)); } };
+
+  const download = async () => {
+    try {
+      const data = await api(`/v1/memory/export/${cfg.userId}?project_id=${cfg.projectId}`);
+      const blob = new Blob([JSON.stringify({ memgram_export_version: 1, data }, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `memgram-${cfg.projectId}-${cfg.userId}.json`;
+      a.click(); URL.revokeObjectURL(a.href);
+    } catch (e) { onErr(String(e)); }
+  };
 
   return (
     <>
+      <div className="row" style={{ marginBottom: 12 }}>
+        <span className="muted">{items.length} memories · everything below lives on your own machine</span>
+        <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <label className="muted" style={{ display: "flex", gap: 4, alignItems: "center" }}>
+            <input type="checkbox" checked={live} onChange={(e) => setLive(e.target.checked)} /> live
+          </label>
+          <button onClick={download} title="Export this user's entire memory as a portable JSON file">⬇ Download memory</button>
+        </span>
+      </div>
       {items.length === 0 && <div className="empty">No semantic memories yet. They appear after the extractor runs on a conversation.</div>}
       {items.map((m) => (
-        <div className="card" key={m.id}>
+        <div className="card" key={m.id} style={m.superseded ? { opacity: 0.5 } : undefined}>
           <div className="row">
             <span>{m.content}</span>
             <button className="danger" onClick={() => del(m.id)}>Forget</button>
@@ -155,8 +186,10 @@ function Memories({ cfg, onErr }: { cfg: Cfg; onErr: (s: string) => void }) {
           <div className="row" style={{ marginTop: 8 }}>
             <span className="muted">
               <span className={`tag tier-${m.memory_tier}`}>{m.memory_tier}</span>{" "}
+              <span className="tag" title="who can see this memory">{SCOPE_LABEL[m.scope] || m.scope}</span>{" "}
               {m.memory_type} · reinforced ×{m.reinforcement_count}
               {m.emotional_weight > 1 ? " · ⚑ correction" : ""}
+              {m.superseded ? " · ⊘ superseded" : ""}
             </span>
             <span className="muted" title="retention score (Ebbinghaus)">
               <span className="bar"><i style={{ width: `${Math.round(Math.min(1, m.retention_score) * 100)}%` }} /></span>
