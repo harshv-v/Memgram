@@ -19,7 +19,7 @@ DEFAULTS: dict = {
     "memory_budget": 4000,
     "summarize_threshold": 0.6,   # compress when context is this fraction full
     "raw_turns_keep": 10,
-    "sharing_scope": "project",   # global | project | private
+    "sharing_scope": "private",   # global | project | private (isolated by default)
     "features": {
         "semantic": True, "episodic": True, "procedural": False,
         "instructions": True, "reflection": True, "decay": True,

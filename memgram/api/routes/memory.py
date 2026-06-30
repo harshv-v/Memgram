@@ -49,6 +49,25 @@ async def delete_memory(request: Request, memory_id: UUID):
         raise HTTPException(status_code=404, detail="Memory not found")
 
 
+class ScopeBody(BaseModel):
+    scope: str  # private | project | global
+
+
+@router.patch("/{memory_id}/scope")
+async def set_scope(request: Request, memory_id: UUID, body: ScopeBody):
+    """Share or un-share a memory across agents: private (owner only) /
+    project (agents in the project) / global (all agents of this user)."""
+    if body.scope not in ("private", "project", "global"):
+        raise HTTPException(status_code=400, detail="scope must be private|project|global")
+    async with request.app.state.pool.acquire() as conn:
+        updated = await conn.fetchval(
+            "UPDATE semantic_memories SET scope = $2 WHERE id = $1 RETURNING id",
+            memory_id, body.scope)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Memory not found")
+    return {"id": str(updated), "scope": body.scope}
+
+
 # -- GDPR ---------------------------------------------------------------------
 @router.get("/export/{user_id}")
 async def export_user(request: Request, user_id: str, project_id: str):

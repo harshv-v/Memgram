@@ -1,13 +1,19 @@
-"""Ranked retrieval — the hot-path query from section 7 of the design doc.
+"""Ranked retrieval — the hot-path query.
 
 ranking = cosine_similarity × retention_score × emotional_weight
 Retrieved memories are reinforced (access = rehearsal, like human memory).
-Scope filter is applied on every SELECT — this is the Router agent's rule,
-enforced as SQL, ready for multi-agent scopes later.
+
+Multi-agent visibility (isolated by default, share opt-in): a querying agent
+sees its OWN memories (any scope) plus memories any other agent of the same user
+marked as shared (`scope IN ('global','project')`). A `private` memory is visible
+only to the agent that wrote it. This is how "this is agent A, this is agent B"
+is handled internally — each agent is private unless it opts a memory into sharing.
 """
 import asyncpg
 
 from memgram.memory.embedder import to_pgvector
+
+SHARED_SCOPES = ("global", "project")
 
 
 class Retriever:
@@ -17,8 +23,7 @@ class Retriever:
 
     async def search(
         self, project_id: str, agent_id: str, user_id: str,
-        query: str, limit: int = 5, allowed_scope: str = "project",
-        enforce_rls: bool = True,
+        query: str, limit: int = 5, enforce_rls: bool = True,
     ) -> list[dict]:
         emb = to_pgvector(await self.embedder.embed(query))
         async with self.pool.acquire() as conn:
@@ -31,19 +36,19 @@ class Retriever:
                     "SELECT set_config('app.current_user_id', $1, true)", user_id)
             rows = await conn.fetch(
                 """
-                SELECT id, content, memory_type, retention_score, memory_tier,
-                       reinforcement_count,
+                SELECT id, content, memory_type, scope, agent_id, retention_score,
+                       memory_tier, reinforcement_count,
                        (1 - (embedding <=> $4::vector))
                          * retention_score * emotional_weight AS rank
                 FROM semantic_memories
-                WHERE project_id = $1 AND user_id = $2 AND agent_id = $3
-                  AND scope IN ('global', $5)
+                WHERE project_id = $1 AND user_id = $2
+                  AND (agent_id = $3 OR scope IN ('global', 'project'))
                   AND memory_tier != 'archived'
                   AND superseded_by IS NULL
                 ORDER BY rank DESC
-                LIMIT $6
+                LIMIT $5
                 """,
-                project_id, user_id, agent_id, emb, allowed_scope, limit,
+                project_id, user_id, agent_id, emb, limit,
             )
             if rows:
                 # Reinforce on access — stability grows, retention resets.
@@ -63,7 +68,8 @@ class Retriever:
         return [
             {"id": str(r["id"]), "content": r["content"],
              "memory_type": r["memory_type"], "rank": float(r["rank"]),
-             "memory_tier": r["memory_tier"],
+             "memory_tier": r["memory_tier"], "scope": r["scope"],
+             "source_agent": r["agent_id"], "shared": r["scope"] in SHARED_SCOPES,
              "reinforcement_count": r["reinforcement_count"]}
             for r in rows
         ]

@@ -19,7 +19,7 @@ class MemoryStore:
         self, project_id: str, agent_id: str, user_id: str, content: str,
         memory_type: str = "fact", source: str = "extractor",
         emotional_weight: float = 1.0, stability: float = 2.0,
-        scope: str = "project", provenance: str | None = None,
+        scope: str = "private", provenance: str | None = None,
     ) -> dict:
         emb = to_pgvector(await self.embedder.embed(content))  # network call: keep OUT of the tx
         lock_key = f"{project_id}:{user_id}:{agent_id}"
