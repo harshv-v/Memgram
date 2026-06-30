@@ -8,6 +8,7 @@ Opt-in: only runs when the `procedural` feature is enabled (e.g. the `coding`
 preset). Procedural memories get higher stability (slow decay) since tool
 behavior changes less often than facts."""
 from memgram.agents.base import BaseAgent, fast_model
+from memgram.prompts import get_prompt
 
 _SYSTEM = """You analyze an AI agent's tool usage in a conversation and extract reusable PROCEDURAL lessons.
 Look at the tool_call and tool_result turns. Return ONLY a JSON object:
@@ -35,7 +36,7 @@ class ProceduralAgent(BaseAgent):
         if job.get("response_text"):
             convo += f"\nassistant: {job['response_text']}"
         return [
-            {"role": "system", "content": _SYSTEM},
+            {"role": "system", "content": get_prompt("procedural.system", _SYSTEM)},
             {"role": "user", "content": f"Conversation with tool usage:\n{convo}"},
         ]
 

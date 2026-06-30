@@ -13,6 +13,7 @@ import os
 import httpx
 
 from memgram.agents.base import BaseAgent, quality_model
+from memgram.prompts import get_prompt
 
 logger = logging.getLogger("memgram.agents")
 
@@ -61,7 +62,7 @@ class ProposerAgent(BaseAgent):
 
     def build_prompt(self, job: dict) -> list[dict]:
         return [
-            {"role": "system", "content": _SYSTEM},
+            {"role": "system", "content": get_prompt("proposer.system", _SYSTEM)},
             {"role": "user", "content":
                 f"Pattern observed {job['reinforcement_count']} times: {job['content']}"},
         ]

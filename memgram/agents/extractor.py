@@ -12,6 +12,7 @@ import logging
 import os
 
 from memgram.agents.base import BaseAgent, fast_model
+from memgram.prompts import get_prompt
 
 logger = logging.getLogger("memgram.agents")
 
@@ -71,7 +72,7 @@ class ExtractorAgent(BaseAgent):
 
     def build_prompt(self, job: dict) -> list[dict]:
         return [
-            {"role": "system", "content": _SYSTEM},
+            {"role": "system", "content": get_prompt("extractor.system", _SYSTEM)},
             {"role": "user", "content": f"Conversation:\n{self._transcript(job)}"},
         ]
 
@@ -90,7 +91,7 @@ class ExtractorAgent(BaseAgent):
         """Return the indices of candidates the transcript actually supports."""
         numbered = "\n".join(f"{i}. {c}" for i, c in enumerate(contents))
         raw = await self._call_llm([
-            {"role": "system", "content": _VERIFY_SYSTEM},
+            {"role": "system", "content": get_prompt("extractor.verify", _VERIFY_SYSTEM)},
             {"role": "user", "content":
                 f"Conversation:\n{transcript}\n\nCandidate memories:\n{numbered}\n\n"
                 'Return JSON {"supported": [indices that are directly stated or clearly implied]}.'},
@@ -161,7 +162,7 @@ class ExtractorAgent(BaseAgent):
                     seen[c["id"]] = c["content"]
             cand_block = "\n".join(f"- id={cid}: {txt}" for cid, txt in seen.items())
             raw = await self._call_llm([
-                {"role": "system", "content": _CONTRA_SYSTEM},
+                {"role": "system", "content": get_prompt("extractor.contradiction", _CONTRA_SYSTEM)},
                 {"role": "user", "content":
                     f"NEW FACTS:\n{new_block}\n\nEXISTING MEMORIES:\n{cand_block}\n\nReturn the JSON."},
             ])

@@ -8,6 +8,7 @@ normal queued job; the SDK can also call it inline when context is over budget.
 The output is deterministic structured JSON, so callers parse, never regex.
 """
 from memgram.agents.base import BaseAgent, fast_model
+from memgram.prompts import get_prompt
 
 _SYSTEM = """You compress a long conversation between a user and an AI assistant into a compact, lossless-of-intent summary.
 Return ONLY a JSON object with this exact shape:
@@ -44,7 +45,7 @@ class SummarizerAgent(BaseAgent):
             if isinstance(m.get("content"), str)
         )
         return [
-            {"role": "system", "content": _SYSTEM},
+            {"role": "system", "content": get_prompt("summarizer.system", _SYSTEM)},
             {"role": "user", "content": f"Conversation to compress:\n{convo}"},
         ]
 

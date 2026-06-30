@@ -166,4 +166,5 @@ docker/        API image + opt-in Postgres+pgvector+AGE image
 | `MEMGRAM_PRESET` | minimal\|chatbot\|coding\|enterprise\|privacy\|custom | (defaults) |
 | `MEMGRAM_WORKER_CONCURRENCY` | parallel job consumers per worker | 8 |
 | `MEMGRAM_FAITHFULNESS` | `0` disables the anti-hallucination gate | on |
+| `MEMGRAM_PROMPT_<KEY>` | override any agent prompt without code edits (`memgram/prompts.py`); keys: EXTRACTOR_SYSTEM, EXTRACTOR_VERIFY, REFLECTION_SYSTEM, PROPOSER_SYSTEM, SUMMARIZER_SYSTEM, PROCEDURAL_SYSTEM, … | built-in |
 | `MEMGRAM_FAKE_LLM` / `MEMGRAM_FAKE_REDIS` | zero-infra dev (canned LLM / in-proc queue) | off |

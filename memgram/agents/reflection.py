@@ -6,6 +6,7 @@ in the store (similar insight → reinforcement, which feeds habit formation).
 After writing insights, checks for habit candidates and enqueues proposals.
 """
 from memgram.agents.base import BaseAgent, quality_model
+from memgram.prompts import get_prompt
 
 _SYSTEM = """You are a reflection process for an AI agent's memory. You read raw interaction logs and distill durable, higher-level insights about the user.
 Return ONLY a JSON object:
@@ -58,7 +59,7 @@ class ReflectionAgent(BaseAgent):
     def build_prompt(self, job: dict) -> list[dict]:
         text = "\n".join(f"{l['role']}: {l['content']}" for l in job["_logs"])
         return [
-            {"role": "system", "content": _SYSTEM},
+            {"role": "system", "content": get_prompt("reflection.system", _SYSTEM)},
             {"role": "user", "content": f"Interaction logs:\n{text}"},
         ]
 
