@@ -38,12 +38,20 @@ conversation. Reject any candidate not supported by the conversation — a plaus
 sounding but unstated claim is a hallucination and must be rejected.
 Return ONLY a JSON object: {"supported": [list of supported indices]}."""
 
-_CONTRA_SYSTEM = """You detect when a NEW fact about a user makes an EXISTING memory obsolete.
-A memory is obsolete ONLY when a new fact updates the SAME attribute to a different value —
-the user moved to a new city, changed jobs or title, switched a tool or stack, changed a habit.
-Do NOT mark memories that are still true, merely related, or just additional detail.
-Return ONLY JSON: {"superseded": [{"old_id": "<id of the now-obsolete memory>", "by": <index of the new fact that replaces it>}]}.
-Return an empty list if nothing is truly obsolete."""
+_OP_SYSTEM = """You integrate ONE new fact about a user into their memory store.
+Given the NEW FACT and its most similar EXISTING MEMORIES, choose exactly one operation:
+- "ADD"    — the fact is new information no existing memory covers.
+- "UPDATE" — an existing memory describes the SAME thing and the fact refines or adds detail
+             to it; rewrite that memory to a single merged sentence. Set target_id and content.
+- "DELETE" — the fact makes an existing memory UNTRUE (same attribute, different value: moved
+             city, changed job or title, switched tool or stack, changed a habit, or an explicit
+             negation like "no longer"). Set target_id to the now-false memory.
+- "NOOP"   — the fact adds nothing beyond what existing memories already say.
+Rules:
+- Choose UPDATE or DELETE ONLY when an existing memory states the same attribute of the same
+  subject. Merely related or additional facts are ADD. When unsure, choose ADD.
+- target_id MUST be copied exactly from the EXISTING MEMORIES list.
+Return ONLY JSON: {"op": "ADD" | "UPDATE" | "DELETE" | "NOOP", "target_id": "<id or null>", "content": "<merged single sentence for UPDATE, else null>"}"""
 
 
 class ExtractorAgent(BaseAgent):
@@ -54,12 +62,16 @@ class ExtractorAgent(BaseAgent):
             self.model = fast_model()
         self.faithful = cfg.get(
             "faithfulness", os.environ.get("MEMGRAM_FAITHFULNESS", "1") != "0")
-        # Experimental + OFF by default: the naive supersession heuristic regressed
-        # the eval's `update` axis (80% -> 20%) by over-archiving correct facts.
-        # Pending a research-driven redesign (see research/). Enable with
-        # MEMGRAM_CONTRADICTION=1 only for experiments.
+        # Contradiction v2 — Mem0-grounded OPERATION SELECTION (ADD/UPDATE/DELETE/
+        # NOOP), one bounded decision per new fact against its top-s neighbours.
+        # (v1 asked "which old ids are obsolete?" over a noisy candidate set and
+        # regressed the eval's update axis 80%→20%; see research/02.) Still OFF by
+        # default until it beats the no-contradiction baseline on the eval.
+        # Enable with MEMGRAM_CONTRADICTION=1.
         self.contradiction = cfg.get(
             "contradiction", os.environ.get("MEMGRAM_CONTRADICTION", "0") != "0")
+        self.op_top_s = int(cfg.get(
+            "contradiction_top_s", os.environ.get("MEMGRAM_CONTRADICTION_TOP_S", "8")))
 
     def _transcript(self, job: dict) -> str:
         convo = "\n".join(
@@ -120,62 +132,75 @@ class ExtractorAgent(BaseAgent):
                 keep = set(range(len(candidates)))
 
         provenance = transcript[:500]
-        stored: list[tuple[str, str]] = []  # (content, new_id) for the contradiction pass
+        # Ids written this turn — this turn's facts must never be UPDATE/DELETE
+        # targets for each other (they're all simultaneously true).
+        batch_ids: set[str] = set()
         for idx, (key, item) in enumerate(candidates):
             if idx not in keep:
                 logger.info("extractor: dropped unsupported memory: %s", item["content"])
                 continue
-            res = await self.store.upsert_semantic(
+            store_kw = dict(
                 project_id=job["project_id"], agent_id=job["agent_id"],
                 user_id=job["user_id"], content=item["content"],
                 memory_type=item["memory_type"], source="extractor",
                 emotional_weight=2.0 if key == "corrections" else 1.0,
                 provenance=provenance,
             )
-            stored.append((item["content"], res["id"]))
+            if self.contradiction and self._llm is not None:
+                await self._integrate(job, store_kw, batch_ids)
+            else:
+                res = await self.store.upsert_semantic(**store_kw)
+                batch_ids.add(res["id"])
 
-        if self.contradiction and self._llm is not None and stored:
-            await self._resolve_contradictions(job, stored)
-
-    async def _resolve_contradictions(self, job: dict, stored: list[tuple[str, str]]) -> None:
-        """For each freshly stored fact, find near-but-not-duplicate existing
-        memories and, if the LLM judges them obsolete, supersede (archive) them.
-        Only fires when a candidate exists — no candidate, no extra LLM call."""
-        # Only PRIOR memories can be superseded — never a fact from this same turn
-        # (all of this turn's facts are already stored/active, so without this a new
-        # fact could be wrongly archived as another new fact's "old" candidate).
-        batch_ids = {new_id for _, new_id in stored}
-        cand_by_new: dict[int, list[dict]] = {}
-        for i, (content, new_id) in enumerate(stored):
-            cands = await self.store.find_similar_active(
-                job["project_id"], job["agent_id"], job["user_id"], content)
-            cands = [c for c in cands if c["id"] not in batch_ids]
-            if cands:
-                cand_by_new[i] = cands
-        if not cand_by_new:
+    async def _integrate(self, job: dict, store_kw: dict, batch_ids: set[str]) -> None:
+        """Operation-selection integration (Mem0-grounded): for ONE new fact ω,
+        retrieve its top-s nearest active memories and have the LLM pick a single
+        bounded operation on ω — ADD / UPDATE(target) / DELETE(target) / NOOP.
+        The decision is local to ω and its own neighbours: one fact, one op, at
+        most one target, and the target must come from the candidate list. Any
+        failure degrades to ADD — integration must never lose a real fact."""
+        content = store_kw["content"]
+        cands = await self.store.find_similar_active(
+            job["project_id"], job["agent_id"], job["user_id"], content,
+            limit=self.op_top_s)
+        cands = [c for c in cands if c["id"] not in batch_ids]
+        if not cands:  # nothing comparable exists -> ADD, no extra LLM call
+            res = await self.store.upsert_semantic(**store_kw)
+            batch_ids.add(res["id"])
             return
+
+        op, target_id, merged = "ADD", None, None
         try:
-            new_block = "\n".join(f"{i}. {stored[i][0]}" for i in cand_by_new)
-            seen: dict[str, str] = {}
-            for cands in cand_by_new.values():
-                for c in cands:
-                    seen[c["id"]] = c["content"]
-            cand_block = "\n".join(f"- id={cid}: {txt}" for cid, txt in seen.items())
+            cand_block = "\n".join(f"- id={c['id']}: {c['content']}" for c in cands)
             raw = await self._call_llm([
-                {"role": "system", "content": get_prompt("extractor.contradiction", _CONTRA_SYSTEM)},
+                {"role": "system", "content": get_prompt("extractor.operation", _OP_SYSTEM)},
                 {"role": "user", "content":
-                    f"NEW FACTS:\n{new_block}\n\nEXISTING MEMORIES:\n{cand_block}\n\nReturn the JSON."},
+                    f"NEW FACT:\n{content}\n\nEXISTING MEMORIES:\n{cand_block}\n\nReturn the JSON."},
             ])
-            for s in self.parse_json(raw).get("superseded", []):
-                old_id, by = s.get("old_id"), s.get("by")
-                if old_id is None or by is None:
-                    continue
-                try:
-                    new_id = stored[int(by)][1]
-                except (TypeError, ValueError, IndexError):
-                    continue
-                if old_id != new_id:
-                    await self.store.supersede(old_id, new_id)
-                    logger.info("superseded stale memory %s (replaced by %s)", old_id, new_id)
-        except Exception as e:  # supersession is best-effort; never break extraction
-            logger.warning("contradiction check failed (%s); skipping", e)
+            data = self.parse_json(raw)
+            op = str(data.get("op", "ADD")).upper()
+            target_id = data.get("target_id")
+            merged = data.get("content")
+        except Exception as e:  # integration is best-effort; never break extraction
+            logger.warning("operation selection failed (%s); defaulting to ADD", e)
+
+        valid_ids = {c["id"] for c in cands}
+        if op in ("UPDATE", "DELETE") and target_id not in valid_ids:
+            logger.warning("op %s targeted id outside candidate set; defaulting to ADD", op)
+            op = "ADD"
+
+        if op == "NOOP":
+            logger.info("integration NOOP: %s", content)
+            return
+        if op == "UPDATE":
+            res = await self.store.update_semantic(target_id, merged or content)
+            if res is not None:
+                logger.info("integration UPDATE %s -> %r", target_id, merged or content)
+                batch_ids.add(res["id"])
+                return
+            op = "ADD"  # target vanished under us -> keep the fact
+        res = await self.store.upsert_semantic(**store_kw)
+        batch_ids.add(res["id"])
+        if op == "DELETE" and res["id"] != target_id:
+            await self.store.supersede(target_id, res["id"])
+            logger.info("integration DELETE: superseded %s by %s", target_id, res["id"])

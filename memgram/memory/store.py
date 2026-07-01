@@ -76,11 +76,13 @@ class MemoryStore:
     # -- contradiction / supersession --------------------------------------
     async def find_similar_active(
         self, project_id: str, agent_id: str, user_id: str, content: str,
-        limit: int = 5, max_distance: float = 0.45,
+        limit: int = 8, max_distance: float = 0.8,
     ) -> list[dict]:
-        """Active, non-superseded memories semantically NEAR `content` but not
-        exact duplicates — i.e. supersession *candidates* (e.g. an old city vs a
-        new one). Distance only nominates; the LLM decides if it's a real update."""
+        """Top-s active, non-superseded memories nearest to `content`, excluding
+        exact duplicates (those go through dedup→reinforce) — i.e. integration
+        *candidates* for the operation-selection pass. Mem0-style: a bounded
+        top-s set, not "everything within a window"; the loose max_distance only
+        cuts near-orthogonal noise. Distance nominates; the LLM decides the op."""
         emb = to_pgvector(await self.embedder.embed(content))
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
@@ -96,6 +98,34 @@ class MemoryStore:
             )
         return [{"id": str(r["id"]), "content": r["content"], "dist": float(r["dist"])}
                 for r in rows if DEDUP_DISTANCE <= float(r["dist"]) <= max_distance]
+
+    async def update_semantic(self, memory_id: str, content: str) -> dict | None:
+        """UPDATE operation: rewrite an existing memory's content in place
+        (re-embedding it), preserving its id and reinforcement history. Used when
+        a new fact refines/augments the same attribute — the memory gets the
+        merged text plus a reinforcement bump, so habit strength is never lost."""
+        emb = to_pgvector(await self.embedder.embed(content))
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                UPDATE semantic_memories SET
+                  content             = $2,
+                  embedding           = $3::vector,
+                  reinforcement_count = reinforcement_count + 1,
+                  stability           = stability * (1 + 0.2 * retention_score),
+                  retention_score     = 1.0,
+                  last_accessed_at    = NOW(),
+                  memory_tier         = CASE WHEN memory_tier = 'fading'
+                                             THEN 'active' ELSE memory_tier END
+                WHERE id = $1 AND superseded_by IS NULL
+                RETURNING id, reinforcement_count
+                """,
+                memory_id, content, emb,
+            )
+        if row is None:
+            return None
+        return {"id": str(row["id"]), "action": "updated",
+                "reinforcement_count": row["reinforcement_count"]}
 
     async def supersede(self, old_id: str, new_id: str) -> None:
         """Deprecate a stale memory: link it to its replacement and archive it.

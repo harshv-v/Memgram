@@ -159,6 +159,76 @@ from memgram.api.routes.ingest import _est_tokens
 ck("token estimate ~ chars/4", _est_tokens([{"role": "user", "content": "x" * 400}]) == 100)
 
 
+# ---- operation-selection integration (contradiction v2) ----------------------
+# One bounded op per new fact: ADD / UPDATE(target) / DELETE(target) / NOOP.
+class OpStore:
+    def __init__(self, cands):
+        self.cands, self._n = cands, 0
+        self.upserts, self.updates, self.supersedes, self.searches = [], [], [], 0
+    async def find_similar_active(self, project_id, agent_id, user_id, content, limit=8):
+        self.searches += 1
+        return list(self.cands)
+    async def upsert_semantic(self, **kw):
+        self._n += 1
+        self.upserts.append(kw["content"])
+        return {"id": f"new{self._n}", "action": "created", "reinforcement_count": 1}
+    async def update_semantic(self, memory_id, content):
+        self.updates.append((memory_id, content))
+        return {"id": memory_id, "action": "updated", "reinforcement_count": 2}
+    async def supersede(self, old_id, new_id):
+        self.supersedes.append((old_id, new_id))
+
+def run_integration(facts, cands, contradiction=True):
+    st = OpStore(cands)
+    ag = ExtractorAgent(store=st, llm=FakeLLM(),
+                        config={"contradiction": contradiction, "faithfulness": False})
+    job = {"project_id": "p", "agent_id": "a", "user_id": "u",
+           "messages": [{"role": "user", "content": "ctx"}]}
+    result = {"facts": [{"content": f, "memory_type": "fact"} for f in facts]}
+    asyncio.run(ag.on_success(job, result))
+    return st
+
+st = run_integration(["The user lives in Munich."],
+                     [{"id": "old1", "content": "The user lives in Berlin.", "dist": 0.3}])
+ck("op DELETE: new fact stored", st.upserts == ["The user lives in Munich."])
+ck("op DELETE: old memory soft-invalidated by new id", st.supersedes == [("old1", "new1")])
+
+st = run_integration(["The user is a tech lead."],
+                     [{"id": "m1", "content": "The user works at Acme.", "dist": 0.2}])
+ck("op UPDATE: merged in place, id kept",
+   st.updates == [("m1", "The user works at Acme as a tech lead.")])
+ck("op UPDATE: no new row, nothing archived", st.upserts == [] and st.supersedes == [])
+
+st = run_integration(["The user lives in Berlin."],
+                     [{"id": "m1", "content": "The user lives in Berlin.", "dist": 0.16}])
+ck("op NOOP: restated fact dropped",
+   st.upserts == [] and st.updates == [] and st.supersedes == [])
+
+st = run_integration(["The user has a dog named Rex."],
+                     [{"id": "m1", "content": "The user works at Acme.", "dist": 0.5}])
+ck("op ADD: unrelated candidate untouched", st.upserts and st.supersedes == [] and st.updates == [])
+
+st = run_integration(["The user said bogus target."],
+                     [{"id": "m1", "content": "The user works at Acme.", "dist": 0.5}])
+ck("op safety: target outside candidate set -> ADD, no archive",
+   st.upserts and st.supersedes == [])
+
+st = run_integration(["The user has a cat."], [])
+ck("op: no candidates -> direct ADD (no LLM decision)", st.upserts == ["The user has a cat."])
+
+# batch safety: this turn's facts can't supersede each other
+st = run_integration(["The user has a parrot.", "The user lives in Munich."],
+                     [{"id": "new1", "content": "The user lives in Berlin.", "dist": 0.3}])
+ck("op batch safety: same-turn id excluded from targets",
+   len(st.upserts) == 2 and st.supersedes == [])
+
+st = run_integration(["The user lives in Munich."],
+                     [{"id": "old1", "content": "The user lives in Berlin.", "dist": 0.3}],
+                     contradiction=False)
+ck("contradiction off: plain store, no search",
+   st.upserts == ["The user lives in Munich."] and st.searches == 0 and st.supersedes == [])
+
+
 fail = False
 for n, c in checks:
     print(f"{'PASS' if c else 'FAIL'}  {n}")

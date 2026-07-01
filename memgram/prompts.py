@@ -20,7 +20,7 @@ import os
 PROMPT_KEYS = (
     "extractor.system",
     "extractor.verify",
-    "extractor.contradiction",
+    "extractor.operation",
     "reflection.system",
     "proposer.system",
     "summarizer.system",

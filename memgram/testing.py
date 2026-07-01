@@ -28,9 +28,32 @@ class _FakeCompletions:
             if "tool" in user.lower() or "(" in user:
                 procs.append({"content": "The search tool fails without a date filter; always include one."})
             return _Resp(json.dumps({"procedures": procs}))
-        if "makes an EXISTING memory obsolete" in system:
-            # contradiction check: tests don't exercise supersession -> nothing obsolete
-            return _Resp(json.dumps({"superseded": []}))
+        if "integrate ONE new fact" in system:
+            # operation selection: deterministic ops for the logic tests.
+            # Parse "NEW FACT:\n<content>" and "- id=<id>: <text>" candidate lines.
+            new_fact = user.split("NEW FACT:")[-1].split("EXISTING MEMORIES:")[0].strip().lower()
+            cands = []
+            for line in user.splitlines():
+                line = line.strip()
+                if line.startswith("- id="):
+                    cid, txt = line[5:].split(":", 1)
+                    cands.append((cid.strip(), txt.strip().lower()))
+            for cid, txt in cands:
+                if txt == new_fact:  # restating an existing memory -> NOOP
+                    return _Resp(json.dumps({"op": "NOOP", "target_id": None, "content": None}))
+            if "munich" in new_fact:  # city change -> DELETE the old-city memory
+                for cid, txt in cands:
+                    if "berlin" in txt:
+                        return _Resp(json.dumps({"op": "DELETE", "target_id": cid, "content": None}))
+            if "tech lead" in new_fact:  # same attribute refined -> UPDATE (merge)
+                for cid, txt in cands:
+                    if "acme" in txt:
+                        return _Resp(json.dumps({
+                            "op": "UPDATE", "target_id": cid,
+                            "content": "The user works at Acme as a tech lead."}))
+            if "bogus target" in new_fact:  # invalid target: extractor must fall back to ADD
+                return _Resp(json.dumps({"op": "DELETE", "target_id": "no-such-id", "content": None}))
+            return _Resp(json.dumps({"op": "ADD", "target_id": None, "content": None}))
         if "extract long-term memories" in system:
             out = {"facts": [], "preferences": [], "entities": [], "corrections": []}
             low = user.lower()
