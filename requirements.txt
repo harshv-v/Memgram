@@ -5,6 +5,7 @@ pydantic>=2.0
 # Backend (API + worker)
 fastapi>=0.111
 uvicorn>=0.30
+uvloop>=0.19; sys_platform != "win32"   # faster event loop in containers
 asyncpg>=0.29
 redis>=5.0
 pgvector>=0.3

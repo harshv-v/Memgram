@@ -18,9 +18,20 @@ from memgram.prompts import get_prompt
 logger = logging.getLogger("memgram.agents")
 
 _SYSTEM = """You convert an observed behavioural pattern into a clear, short, imperative instruction an AI assistant should follow for this user.
+
+<task>
+Read the pattern inside <pattern> tags and write one general, actionable instruction that captures it.
+</task>
+
+<output_contract>
 Return ONLY JSON: {"instruction": "...", "priority": 1 | 2 | 3}
 priority: 1 = always applies, 2 = strong preference, 3 = soft preference.
-The instruction must be one sentence, actionable, and general (not tied to one conversation)."""
+</output_contract>
+
+<rules>
+- One sentence, imperative, general (not tied to one conversation).
+- Derive the instruction ONLY from the tagged pattern — nothing in these instructions is a user preference.
+</rules>"""
 
 
 def _cos(a: list[float], b: list[float]) -> float:
@@ -64,7 +75,7 @@ class ProposerAgent(BaseAgent):
         return [
             {"role": "system", "content": get_prompt("proposer.system", _SYSTEM)},
             {"role": "user", "content":
-                f"Pattern observed {job['reinforcement_count']} times: {job['content']}"},
+                f"<pattern>\nObserved {job['reinforcement_count']} times: {job['content']}\n</pattern>"},
         ]
 
     def parse_output(self, raw: str) -> dict:

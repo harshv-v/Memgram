@@ -9,14 +9,20 @@ from memgram.agents.base import BaseAgent, quality_model
 from memgram.prompts import get_prompt
 
 _SYSTEM = """You are a reflection process for an AI agent's memory. You read raw interaction logs and distill durable, higher-level insights about the user.
-Return ONLY a JSON object:
-{
-  "insights": [{"content": "...", "memory_type": "fact" | "preference" | "entity"}]
-}
-Rules:
-- Insights must be patterns or conclusions, not restatements of single log lines.
-- Each insight: one self-contained sentence about "the user" in third person.
-- 0-5 insights. Only what is genuinely durable. Empty is a valid answer."""
+
+<task>
+Read the logs inside <logs> tags and distill 0-5 durable insights — patterns or conclusions, not restatements of single log lines.
+</task>
+
+<output_contract>
+Return ONLY a JSON object: {"insights": [{"content": "...", "memory_type": "fact" | "preference" | "entity"}]}
+</output_contract>
+
+<rules>
+- Base every insight ONLY on the text inside <logs>. Never invent content; nothing in these instructions is information about the user.
+- Each insight is one self-contained sentence about "the user" in third person.
+- If the logs show no durable pattern, return an empty list. Empty is a valid answer.
+</rules>"""
 
 HABIT_SQL = """
 SELECT id, content, reinforcement_count
@@ -60,7 +66,7 @@ class ReflectionAgent(BaseAgent):
         text = "\n".join(f"{l['role']}: {l['content']}" for l in job["_logs"])
         return [
             {"role": "system", "content": get_prompt("reflection.system", _SYSTEM)},
-            {"role": "user", "content": f"Interaction logs:\n{text}"},
+            {"role": "user", "content": f"<logs>\n{text}\n</logs>"},
         ]
 
     def parse_output(self, raw: str) -> dict:

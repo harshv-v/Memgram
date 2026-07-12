@@ -11,14 +11,20 @@ from memgram.agents.base import BaseAgent, fast_model
 from memgram.prompts import get_prompt
 
 _SYSTEM = """You analyze an AI agent's tool usage in a conversation and extract reusable PROCEDURAL lessons.
-Look at the tool_call and tool_result turns. Return ONLY a JSON object:
-{"procedures": [{"content": "..."}]}
-Each item is one general, reusable rule about using a tool — which tool, what input pattern, and whether it tends to succeed or fail — phrased for next time.
-Good: "Calling the search API without a date filter returns a timeout; always include a date range."
-Good: "The deploy tool succeeds when run after the test suite passes."
-Rules:
-- Only tool-related lessons. If no tool was used or there's nothing reusable, return an empty array.
-- Each item is a single self-contained sentence. Quality over quantity."""
+
+<task>
+Read the conversation inside <conversation> tags, focusing on tool_call and tool_result turns, and extract general reusable rules about using those tools: which tool, what input pattern, and whether it tends to succeed or fail — phrased for next time.
+</task>
+
+<output_contract>
+Return ONLY a JSON object: {"procedures": [{"content": "..."}]}
+</output_contract>
+
+<rules>
+- Derive lessons ONLY from the tagged conversation; never invent tools or outcomes.
+- Only tool-related lessons. If no tool was used or nothing is reusable, return an empty array — empty is the correct answer for most conversations.
+- Each item is a single self-contained sentence. Quality over quantity.
+</rules>"""
 
 
 class ProceduralAgent(BaseAgent):
@@ -37,7 +43,7 @@ class ProceduralAgent(BaseAgent):
             convo += f"\nassistant: {job['response_text']}"
         return [
             {"role": "system", "content": get_prompt("procedural.system", _SYSTEM)},
-            {"role": "user", "content": f"Conversation with tool usage:\n{convo}"},
+            {"role": "user", "content": f"<conversation>\n{convo}\n</conversation>"},
         ]
 
     def parse_output(self, raw: str) -> list[dict]:

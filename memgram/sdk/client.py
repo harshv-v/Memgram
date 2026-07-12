@@ -35,6 +35,33 @@ class MemgramAPIClient:
         r.raise_for_status()
         return r.json()["instructions"]
 
+    # -- combined context: ONE round trip (hot path, preferred) -------------
+    def get_context(self, user_id: str, agent_id: str, query: str | None,
+                    limit: int = 5) -> dict | None:
+        """instructions + memories in one call. None -> server predates
+        /v1/context; caller falls back to the two-call path."""
+        params = {**self._params(user_id, agent_id), "limit": limit}
+        params.pop("status", None)
+        if query:
+            params["query"] = query
+        r = self._sync.get("/v1/context", params=params)
+        if r.status_code == 404:
+            return None
+        r.raise_for_status()
+        return r.json()
+
+    async def aget_context(self, user_id: str, agent_id: str, query: str | None,
+                           limit: int = 5) -> dict | None:
+        params = {**self._params(user_id, agent_id), "limit": limit}
+        params.pop("status", None)
+        if query:
+            params["query"] = query
+        r = await self._async.get("/v1/context", params=params)
+        if r.status_code == 404:
+            return None
+        r.raise_for_status()
+        return r.json()
+
     # -- semantic memory: read (hot path) ----------------------------------
     def search_memories(self, user_id: str, agent_id: str, query: str,
                         limit: int = 5) -> list[dict]:

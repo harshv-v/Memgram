@@ -92,3 +92,22 @@ services:
 
 volumes:
   pgdata:
+
+  # Opt-in connection pooler for high concurrency:  docker compose --profile scale up
+  # Point DATABASE_URL at port 6432 to route through it.
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    profiles: ["scale"]
+    environment:
+      DB_HOST: db
+      DB_USER: memgram
+      DB_PASSWORD: memgram
+      DB_NAME: memgram
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: "500"
+      DEFAULT_POOL_SIZE: "20"
+      AUTH_TYPE: scram-sha-256
+    ports:
+      - "6432:5432"
+    depends_on:
+      - db

@@ -20,8 +20,11 @@ Issues = "https://github.com/your-org/memgram/issues"
 [project.optional-dependencies]
 backend = [
   "fastapi>=0.111", "uvicorn>=0.30", "asyncpg>=0.29",
+  "uvloop>=0.19; sys_platform != 'win32'",
   "redis>=5.0", "pgvector>=0.3", "python-jose>=3.3", "fastembed>=0.3",
 ]
+anthropic = ["anthropic>=0.34"]
+watsonx = ["ibm-watsonx-ai>=1.1"]
 dev = ["fakeredis>=2.20", "pytest>=8.0"]
 
 [tool.setuptools.packages.find]

@@ -11,18 +11,21 @@ from memgram.agents.base import BaseAgent, fast_model
 from memgram.prompts import get_prompt
 
 _SYSTEM = """You compress a long conversation between a user and an AI assistant into a compact, lossless-of-intent summary.
+
+<task>
+Read the conversation inside <conversation> tags and capture everything a future session would need to continue seamlessly.
+</task>
+
+<output_contract>
 Return ONLY a JSON object with this exact shape:
-{
-  "key_decisions":       ["..."],
-  "facts_established":    ["..."],
-  "errors_corrected":     ["..."],
-  "preferences_revealed": ["..."],
-  "open_threads":         ["..."]
-}
-Rules:
-- Capture everything a future session would need to continue seamlessly.
+{"key_decisions": ["..."], "facts_established": ["..."], "errors_corrected": ["..."], "preferences_revealed": ["..."], "open_threads": ["..."]}
+</output_contract>
+
+<rules>
+- Summarize ONLY the text inside <conversation>; never invent content.
 - Each item is one short, self-contained sentence.
-- Drop pleasantries and redundancy. Empty arrays are fine."""
+- Drop pleasantries and redundancy. Empty arrays are fine — most sections are empty for most conversations.
+</rules>"""
 
 _SECTIONS = [
     ("key_decisions", "Key decisions"),
@@ -46,7 +49,7 @@ class SummarizerAgent(BaseAgent):
         )
         return [
             {"role": "system", "content": get_prompt("summarizer.system", _SYSTEM)},
-            {"role": "user", "content": f"Conversation to compress:\n{convo}"},
+            {"role": "user", "content": f"<conversation>\n{convo}\n</conversation>"},
         ]
 
     def parse_output(self, raw: str) -> dict:

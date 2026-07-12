@@ -1,0 +1,68 @@
+name: ci
+
+on:
+  push: { branches: [main] }
+  pull_request:
+  schedule:
+    - cron: "0 3 * * *"   # nightly full run
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12", "3.13"]
+    services:
+      db:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: memgram
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/memgram
+      MEMGRAM_FAKE_LLM: "1"
+      MEMGRAM_FAKE_REDIS: "1"
+      MEMGRAM_API_KEY: mgram_dev_key
+      PYTHONPATH: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "${{ matrix.python }}" }
+      - name: Install
+        run: |
+          pip install -e ".[backend,dev]" fakeredis hypothesis prometheus-client ruff
+      - name: Lint
+        run: ruff check memgram tests bench --select E9,F  # errors only; style later
+      - name: Migrate
+        run: python -m memgram.memory.migrate
+      - name: Logic suite
+        run: python tests/test_logic.py
+      - name: Safety suite
+        run: python tests/test_safety.py
+      - name: Provider suite
+        run: python tests/test_providers.py
+      - name: Streaming suite
+        run: python tests/test_streaming.py
+      - name: Property suite (hypothesis)
+        run: python tests/test_properties.py
+      - name: Reliability suite (outbox + crash recovery)
+        run: python tests/test_outbox.py
+      - name: Pipeline suite
+        run: python tests/test_pipeline.py
+      - name: Gauntlet (3-week simulated life)
+        run: python tests/test_gauntlet.py
+      - name: Thin slice (live API)
+        run: |
+          uvicorn memgram.api.main:app --port 8000 --log-level warning &
+          for i in $(seq 1 40); do curl -s localhost:8000/health >/dev/null && break; sleep 0.5; done
+          python tests/test_thin_slice.py
+          python tests/test_usage.py
+          python tests/test_monitors.py
+      - name: Metrics endpoint sanity
+        run: curl -sf localhost:8000/metrics | grep -q memgram_request_seconds

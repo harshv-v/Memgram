@@ -101,8 +101,13 @@ docker/          API image + opt-in Postgres+pgvector+AGE image
 
 **Stack, deliberately boring:** FastAPI + asyncpg (no ORM), Redis/Valkey queue (~80 lines,
 no Celery), Postgres + pgvector (HNSW index), structured `json_object` outputs everywhere.
-100% open-source infrastructure; OpenAI is the default brain with a documented escape hatch
-to local models (`MEMGRAM_LLM_BASE_URL`, `MEMGRAM_EMBED_MODEL`, `MEMGRAM_EMBED_DIMS`).
+100% open-source infrastructure. **Multi-provider by design, still no frameworks:**
+wrap OpenAI, Anthropic (native), Gemini, Ollama, vLLM, Groq clients on the app side; pick the
+background brain with one env var — `MEMGRAM_BRAIN=openai|deepseek|gemini|groq|anthropic|watsonx`
+(DeepSeek ~$0.14/M and Gemini Flash-Lite ~$0.10/M cut background cost ~5x vs the default).
+Each adapter handles its provider's JSON mechanics; prompts adapt per model via
+`MEMGRAM_PROMPT_*` overrides / `MEMGRAM_PROMPT_SUFFIX_*` overlays — tuned from eval runs,
+not vibes. Local models: `MEMGRAM_LLM_BASE_URL`, `MEMGRAM_EMBED_MODEL`, `MEMGRAM_EMBED_DIMS`.
 
 ---
 

@@ -22,12 +22,22 @@ class Memgram:
         self.api = MemgramAPIClient(self.config)
         self._assembler = ContextAssembler(self.api, self.config)
 
-    def wrap(self, client, agent_name: str | None = None) -> WrappedClient:
-        """Wrap any OpenAI-compatible client. One line. Nothing else changes."""
+    def wrap(self, client, agent_name: str | None = None):
+        """Wrap any LLM client. One line. Nothing else changes.
+        OpenAI-compatible clients (OpenAI, Ollama, Groq, Gemini's OpenAI
+        endpoint, vLLM, ...) are detected by `.chat`; native Anthropic clients
+        by `.messages`."""
         config = self.config
         if agent_name is not None:
             config = config.model_copy(update={"agent_name": agent_name})
-        return WrappedClient(client, ContextAssembler(self.api, config), config)
+        if hasattr(client, "chat"):
+            return WrappedClient(client, ContextAssembler(self.api, config), config)
+        if hasattr(client, "messages"):
+            from memgram.sdk.anthropic_proxy import AnthropicWrappedClient
+            return AnthropicWrappedClient(client, self.api, config)
+        raise TypeError(
+            "Don't know how to wrap this client: expected an OpenAI-compatible "
+            "client (has .chat) or an Anthropic client (has .messages).")
 
     @property
     def settings(self) -> dict:

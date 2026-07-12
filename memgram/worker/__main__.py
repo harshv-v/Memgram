@@ -1,9 +1,10 @@
 """Worker entrypoint:  python -m memgram.worker"""
 import asyncio
-import logging
 import os
 
 import asyncpg
+
+from memgram.obs import setup_logging
 
 from memgram.memory.embedder import get_embedder
 from memgram.memory.store import MemoryStore
@@ -12,7 +13,7 @@ from memgram.worker.dispatcher import Dispatcher
 from memgram.worker.queue import JobQueue
 from memgram.worker.scheduler import Scheduler
 
-logging.basicConfig(level=os.environ.get("MEMGRAM_LOG_LEVEL", "INFO"))
+setup_logging()
 
 
 def worker_config() -> dict:
@@ -29,8 +30,17 @@ def worker_config() -> dict:
     }
 
 
+def _use_uvloop():
+    try:
+        import uvloop
+        uvloop.install()
+    except ImportError:
+        pass
+
+
 async def main() -> None:
-    pool = await asyncpg.create_pool(os.environ["DATABASE_URL"], min_size=1, max_size=5)
+    pool = await asyncpg.create_pool(os.environ["DATABASE_URL"], min_size=1,
+        max_size=int(os.environ.get("MEMGRAM_POOL_MAX", "5")))
     embedder = get_embedder()
     store = MemoryStore(pool, embedder)
     queue = JobQueue()
@@ -41,4 +51,5 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
+    _use_uvloop()
     asyncio.run(main())

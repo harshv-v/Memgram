@@ -5,6 +5,9 @@ possible (reinforcement_count is the habit signal)."""
 import asyncpg
 
 from memgram.memory.embedder import to_pgvector
+from memgram.obs import MEMORIES_TOTAL
+from memgram.safety import redact_pii
+from memgram import settings_store
 
 DEDUP_DISTANCE = 0.15
 
@@ -21,6 +24,8 @@ class MemoryStore:
         emotional_weight: float = 1.0, stability: float = 2.0,
         scope: str = "private", provenance: str | None = None,
     ) -> dict:
+        if await settings_store.get_bool(self.pool, project_id, "pii_redact"):
+            content = redact_pii(content)
         emb = to_pgvector(await self.embedder.embed(content))  # network call: keep OUT of the tx
         lock_key = f"{project_id}:{user_id}:{agent_id}"
         async with self.pool.acquire() as conn:
@@ -42,7 +47,7 @@ class MemoryStore:
                     """,
                     project_id, user_id, agent_id, emb,
                 )
-                if similar and similar["dist"] < DEDUP_DISTANCE:
+                if similar and similar["dist"] is not None and similar["dist"] < DEDUP_DISTANCE:
                     row = await conn.fetchrow(
                         """
                         UPDATE semantic_memories SET
@@ -58,6 +63,7 @@ class MemoryStore:
                         """,
                         similar["id"], emotional_weight,
                     )
+                    MEMORIES_TOTAL.labels(action="reinforced").inc()
                     return {"id": str(row["id"]), "action": "reinforced",
                             "reinforcement_count": row["reinforcement_count"]}
                 row = await conn.fetchrow(
@@ -71,6 +77,7 @@ class MemoryStore:
                     project_id, agent_id, user_id, content, memory_type, source,
                     emb, emotional_weight, stability, scope, provenance,
                 )
+                MEMORIES_TOTAL.labels(action="created").inc()
                 return {"id": str(row["id"]), "action": "created", "reinforcement_count": 1}
 
     # -- contradiction / supersession --------------------------------------
@@ -97,13 +104,19 @@ class MemoryStore:
                 project_id, user_id, agent_id, emb, limit,
             )
         return [{"id": str(r["id"]), "content": r["content"], "dist": float(r["dist"])}
-                for r in rows if DEDUP_DISTANCE <= float(r["dist"]) <= max_distance]
+                for r in rows if r["dist"] is not None
+                and DEDUP_DISTANCE <= float(r["dist"]) <= max_distance]
 
     async def update_semantic(self, memory_id: str, content: str) -> dict | None:
         """UPDATE operation: rewrite an existing memory's content in place
         (re-embedding it), preserving its id and reinforcement history. Used when
         a new fact refines/augments the same attribute — the memory gets the
         merged text plus a reinforcement bump, so habit strength is never lost."""
+        async with self.pool.acquire() as conn:
+            proj = await conn.fetchval(
+                "SELECT project_id FROM semantic_memories WHERE id = $1", memory_id)
+        if proj and await settings_store.get_bool(self.pool, proj, "pii_redact"):
+            content = redact_pii(content)
         emb = to_pgvector(await self.embedder.embed(content))
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
@@ -124,6 +137,7 @@ class MemoryStore:
             )
         if row is None:
             return None
+        MEMORIES_TOTAL.labels(action="updated").inc()
         return {"id": str(row["id"]), "action": "updated",
                 "reinforcement_count": row["reinforcement_count"]}
 
@@ -139,6 +153,7 @@ class MemoryStore:
                 """,
                 old_id, new_id,
             )
+        MEMORIES_TOTAL.labels(action="superseded").inc()
 
     # -- episodic -------------------------------------------------------------
     async def log_episodic(
@@ -155,3 +170,32 @@ class MemoryStore:
                 project_id, agent_id, user_id, role, content, emotional_weight,
             )
             return str(row["id"])
+
+    # -- transactional ingest (episodic + outbox in ONE commit) ---------------
+    async def ingest_turn(
+        self, project_id: str, agent_id: str, user_id: str,
+        entries: list[tuple[str, str]], jobs: list[tuple[str, dict]],
+    ) -> list[str]:
+        """Write this turn's episodic entries AND its outbox job intents in one
+        transaction — either the turn fully exists (rows + pending jobs) or it
+        doesn't. Closes the dual-write gap. Returns the outbox row ids."""
+        import json as _json
+        outbox_ids: list[str] = []
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                for role, content in entries:
+                    await conn.execute(
+                        """
+                        INSERT INTO episodic_logs
+                          (project_id, agent_id, user_id, role, content)
+                        VALUES ($1,$2,$3,$4,$5)
+                        """,
+                        project_id, agent_id, user_id, role, content,
+                    )
+                for job_type, payload in jobs:
+                    row = await conn.fetchrow(
+                        "INSERT INTO outbox (job_type, payload) VALUES ($1, $2::jsonb) RETURNING id",
+                        job_type, _json.dumps(payload),
+                    )
+                    outbox_ids.append(str(row["id"]))
+        return outbox_ids

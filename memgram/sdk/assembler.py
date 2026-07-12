@@ -13,6 +13,7 @@ the original messages untouched.
 import logging
 import os
 
+from memgram.safety import sanitize_memory
 from memgram.sdk.client import MemgramAPIClient
 
 logger = logging.getLogger("memgram")
@@ -39,7 +40,7 @@ def _format_instructions(instructions: list[dict]) -> str | None:
 def _format_semantic(memories: list[dict]) -> str | None:
     if not memories:
         return None
-    lines = [f"- {m['content']}" for m in memories]
+    lines = [f"- {sanitize_memory(m['content'])}" for m in memories]
     return _SEM_HEADER + "\n".join(lines)
 
 
@@ -81,6 +82,7 @@ class ContextAssembler:
     def __init__(self, api: MemgramAPIClient, config=None):
         self._api = api
         self._config = config
+        self._combined_ok = True  # flips off once if the server lacks /v1/context
 
     def _semantic_on(self) -> bool:
         return self._config is None or self._config.features.get("semantic", True)
@@ -90,30 +92,48 @@ class ContextAssembler:
 
     def enrich(self, messages: list[dict], user_id: str, agent_id: str) -> list[dict]:
         instr_block = sem_block = None
+        query = _last_user_text(messages) if self._semantic_on() else None
+        if self._combined_ok:  # one round trip (server parallelizes internally)
+            try:
+                ctx = self._api.get_context(user_id, agent_id, query)
+                if ctx is not None:
+                    return _inject(messages,
+                                   _format_instructions(ctx["instructions"]),
+                                   _format_semantic(ctx["memories"]))
+                self._combined_ok = False  # old server; use legacy path from now on
+            except Exception as e:
+                logger.warning("memgram: context fetch failed (%s); trying legacy path", e)
         try:
             instr_block = _format_instructions(self._api.get_instructions(user_id, agent_id))
         except Exception as e:
             logger.warning("memgram: instruction fetch failed (%s); passing through", e)
-        if self._semantic_on():
+        if query:
             try:
-                query = _last_user_text(messages)
-                if query:
-                    sem_block = _format_semantic(self._api.search_memories(user_id, agent_id, query))
+                sem_block = _format_semantic(self._api.search_memories(user_id, agent_id, query))
             except Exception as e:
                 logger.warning("memgram: semantic fetch failed (%s); skipping", e)
         return _inject(messages, instr_block, sem_block)
 
     async def aenrich(self, messages: list[dict], user_id: str, agent_id: str) -> list[dict]:
         instr_block = sem_block = None
+        query = _last_user_text(messages) if self._semantic_on() else None
+        if self._combined_ok:
+            try:
+                ctx = await self._api.aget_context(user_id, agent_id, query)
+                if ctx is not None:
+                    return _inject(messages,
+                                   _format_instructions(ctx["instructions"]),
+                                   _format_semantic(ctx["memories"]))
+                self._combined_ok = False
+            except Exception as e:
+                logger.warning("memgram: context fetch failed (%s); trying legacy path", e)
         try:
             instr_block = _format_instructions(await self._api.aget_instructions(user_id, agent_id))
         except Exception as e:
             logger.warning("memgram: instruction fetch failed (%s); passing through", e)
-        if self._semantic_on():
+        if query:
             try:
-                query = _last_user_text(messages)
-                if query:
-                    sem_block = _format_semantic(await self._api.asearch_memories(user_id, agent_id, query))
+                sem_block = _format_semantic(await self._api.asearch_memories(user_id, agent_id, query))
             except Exception as e:
                 logger.warning("memgram: semantic fetch failed (%s); skipping", e)
         return _inject(messages, instr_block, sem_block)

@@ -31,7 +31,7 @@ class _FakeCompletions:
         if "integrate ONE new fact" in system:
             # operation selection: deterministic ops for the logic tests.
             # Parse "NEW FACT:\n<content>" and "- id=<id>: <text>" candidate lines.
-            new_fact = user.split("NEW FACT:")[-1].split("EXISTING MEMORIES:")[0].strip().lower()
+            new_fact = user.split("<new_fact>")[-1].split("</new_fact>")[0].strip().lower()
             cands = []
             for line in user.splitlines():
                 line = line.strip()
@@ -65,6 +65,12 @@ class _FakeCompletions:
                 out["facts"].append({"content": "The user works at Acme."})
             if "wrong" in low or "no," in low or "not what i" in low:
                 out["corrections"].append({"content": "The assistant gave a wrong answer the user corrected."})
+            if "berlin" in low:
+                out["facts"].append({"content": "The user lives in Berlin."})
+            if "munich" in low:
+                out["facts"].append({"content": "The user lives in Munich."})
+            if "tech lead" in low:
+                out["facts"].append({"content": "The user is a tech lead."})
             return _Resp(json.dumps(out))
         if "compress a long conversation" in system:
             out = {"key_decisions": [], "facts_established": [],

@@ -28,6 +28,87 @@ def _response_text(response) -> str | None:
         return None
 
 
+def _delta_text(chunk) -> str:
+    """Text delta from a streaming chunk (dict or SDK object), else ''."""
+    try:
+        if isinstance(chunk, dict):
+            return chunk.get("choices", [{}])[0].get("delta", {}).get("content") or ""
+        return chunk.choices[0].delta.content or ""
+    except Exception:
+        return ""
+
+
+class _SyncStream:
+    """Wraps a sync streaming response: passes every chunk through untouched,
+    accumulates the assistant text, and fires `on_done(text)` exactly once when
+    the stream ends. The developer's iteration code doesn't change."""
+
+    def __init__(self, inner, on_done):
+        self._inner = inner
+        self._on_done = on_done
+        self._parts: list[str] = []
+        self._fired = False
+
+    def __iter__(self):
+        try:
+            for chunk in self._inner:
+                self._parts.append(_delta_text(chunk))
+                yield chunk
+        finally:
+            self._finish()
+
+    def _finish(self):
+        if not self._fired:
+            self._fired = True
+            self._on_done("".join(self._parts) or None)
+
+    def __enter__(self):
+        getattr(self._inner, "__enter__", lambda: None)()
+        return self
+
+    def __exit__(self, *exc):
+        return getattr(self._inner, "__exit__", lambda *a: None)(*exc)
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
+class _AsyncStream:
+    """Async twin of _SyncStream."""
+
+    def __init__(self, inner, on_done):
+        self._inner = inner
+        self._on_done = on_done
+        self._parts: list[str] = []
+        self._fired = False
+
+    async def __aiter__(self):
+        try:
+            async for chunk in self._inner:
+                self._parts.append(_delta_text(chunk))
+                yield chunk
+        finally:
+            await self._finish()
+
+    async def _finish(self):
+        if not self._fired:
+            self._fired = True
+            await self._on_done("".join(self._parts) or None)
+
+    async def __aenter__(self):
+        aenter = getattr(self._inner, "__aenter__", None)
+        if aenter:
+            await aenter()
+        return self
+
+    async def __aexit__(self, *exc):
+        aexit = getattr(self._inner, "__aexit__", None)
+        return await aexit(*exc) if aexit else None
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
 class _Passthrough:
     """Delegates every attribute to the wrapped object."""
 
@@ -59,6 +140,13 @@ class ChatCompletionsProxy(_Passthrough):
             original, user_id=user_id, agent_id=agent_id
         )
         response = self._inner.create(**kwargs)
+        if kwargs.get("stream"):
+            # v1.1 gap closed: accumulate chunks, post-hook on completion.
+            def _done(text):
+                def _run():
+                    self._api.ingest(user_id, agent_id, original, text)
+                threading.Thread(target=_run, daemon=True).start()
+            return _SyncStream(response, _done)
         self._post_sync(original, response, user_id, agent_id)
         return response
 
@@ -70,6 +158,13 @@ class ChatCompletionsProxy(_Passthrough):
             original, user_id=user_id, agent_id=agent_id
         )
         response = await self._inner.create(**kwargs)
+        if kwargs.get("stream"):
+            async def _done(text):
+                try:
+                    await self._api.aingest(user_id, agent_id, original, text)
+                except Exception as e:
+                    logger.debug("memgram stream post-hook failed (ignored): %s", e)
+            return _AsyncStream(response, _done)
         # Never blocks the response — schedule and return immediately.
         asyncio.create_task(self._post_async(original, response, user_id, agent_id))
         return response

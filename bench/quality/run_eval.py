@@ -33,7 +33,13 @@ except Exception:
 JUDGE_MODEL = os.environ.get("EVAL_JUDGE_MODEL", "gpt-4o-mini")
 ANSWER_MODEL = os.environ.get("EVAL_ANSWER_MODEL", "gpt-4o-mini")
 TOPK = int(os.environ.get("EVAL_TOPK", "6"))
-oai = OpenAI()
+_oai = None
+def oai_client():
+    """Lazy: lets the leaderboard import this module without an API key."""
+    global _oai
+    if _oai is None:
+        _oai = OpenAI()
+    return _oai
 
 _ANSWER_SYS = (
     "You answer a question using ONLY the provided memories about the user. "
@@ -55,14 +61,14 @@ _JUDGE_SYS = (
 
 def answer_from(memories, q):
     joined = "\n".join(f"- {m}" for m in memories) or "(no memories)"
-    r = oai.chat.completions.create(model=ANSWER_MODEL, temperature=0, messages=[
+    r = oai_client().chat.completions.create(model=ANSWER_MODEL, temperature=0, messages=[
         {"role": "system", "content": _ANSWER_SYS},
         {"role": "user", "content": f"Memories:\n{joined}\n\nQuestion: {q}\nAnswer:"}])
     return r.choices[0].message.content.strip()
 
 
 def judge(q, expect, pred):
-    r = oai.chat.completions.create(model=JUDGE_MODEL, temperature=0, messages=[
+    r = oai_client().chat.completions.create(model=JUDGE_MODEL, temperature=0, messages=[
         {"role": "system", "content": _JUDGE_SYS},
         {"role": "user", "content": f"Question: {q}\nExpected: {expect}\nPredicted: {pred}\nGrade:"}])
     return r.choices[0].message.content.strip().upper().startswith("CORRECT")

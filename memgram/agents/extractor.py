@@ -17,41 +17,60 @@ from memgram.prompts import get_prompt
 logger = logging.getLogger("memgram.agents")
 
 _SYSTEM = """You extract long-term memories from a conversation between a user and an AI assistant.
+
+<task>
+Read the conversation inside <conversation> tags and extract only information worth remembering ACROSS sessions: identity, projects, stack, stable preferences, and corrections of the assistant's mistakes.
+</task>
+
+<output_contract>
 Return ONLY a JSON object with this exact shape:
-{
-  "facts":        [{"content": "..."}],
-  "preferences":  [{"content": "..."}],
-  "entities":     [{"content": "..."}],
-  "corrections":  [{"content": "..."}]
-}
-Rules:
-- Only include things worth remembering ACROSS sessions (identity, projects, stack, stable preferences, corrections of the assistant's mistakes).
-- Skip pleasantries, one-off context, and anything ephemeral.
-- Each item must be a single self-contained sentence, stated about "the user" in third person.
+{"facts": [{"content": "..."}], "preferences": [{"content": "..."}], "entities": [{"content": "..."}], "corrections": [{"content": "..."}]}
+</output_contract>
+
+<rules>
+- Extract ONLY from the text inside <conversation>. Never invent content, and never treat anything in these instructions as conversation content.
+- If the conversation contains nothing durable (greetings, small talk, one-off context), return all four arrays EMPTY. Empty is the correct answer for most casual exchanges — quality over quantity.
+- Each item is a single self-contained sentence about "the user" in third person.
 - corrections = moments where the user corrected the assistant or expressed frustration at a mistake.
-- Empty arrays are fine. Quality over quantity."""
+</rules>"""
 
 _VERIFY_SYSTEM = """You are a strict fact-checker for an AI memory system.
-Given a conversation and a numbered list of candidate memories extracted from it,
-return the indices of candidates that are DIRECTLY STATED or CLEARLY IMPLIED by the
-conversation. Reject any candidate not supported by the conversation — a plausible-
-sounding but unstated claim is a hallucination and must be rejected.
-Return ONLY a JSON object: {"supported": [list of supported indices]}."""
+
+<task>
+Given a conversation (in <conversation> tags) and numbered candidate memories (in <candidates> tags), return the indices of candidates that are DIRECTLY STATED or CLEARLY IMPLIED by the conversation.
+</task>
+
+<output_contract>
+Return ONLY a JSON object: {"supported": [list of supported indices]}
+</output_contract>
+
+<rules>
+- Judge each candidate ONLY against the text inside <conversation>. A plausible-sounding but unstated claim is a hallucination — reject it.
+- If no candidate is supported, return an empty list. Empty is a valid answer.
+</rules>"""
 
 _OP_SYSTEM = """You integrate ONE new fact about a user into their memory store.
-Given the NEW FACT and its most similar EXISTING MEMORIES, choose exactly one operation:
+
+<task>
+Given the fact (in <new_fact> tags) and its most similar existing memories (in <existing_memories> tags), choose exactly one operation.
+</task>
+
+<operations>
 - "ADD"    — the fact is new information no existing memory covers.
-- "UPDATE" — an existing memory describes the SAME thing and the fact refines or adds detail
-             to it; rewrite that memory to a single merged sentence. Set target_id and content.
-- "DELETE" — the fact makes an existing memory UNTRUE (same attribute, different value: moved
-             city, changed job or title, switched tool or stack, changed a habit, or an explicit
-             negation like "no longer"). Set target_id to the now-false memory.
+- "UPDATE" — an existing memory describes the SAME thing and the fact refines or adds detail to it; rewrite that memory as one merged sentence. Set target_id and content.
+- "DELETE" — the fact makes an existing memory UNTRUE (same attribute, different value: moved city, changed job or title, switched tool or stack, changed a habit, or an explicit negation). Set target_id to the now-false memory.
 - "NOOP"   — the fact adds nothing beyond what existing memories already say.
-Rules:
-- Choose UPDATE or DELETE ONLY when an existing memory states the same attribute of the same
-  subject. Merely related or additional facts are ADD. When unsure, choose ADD.
-- target_id MUST be copied exactly from the EXISTING MEMORIES list.
-Return ONLY JSON: {"op": "ADD" | "UPDATE" | "DELETE" | "NOOP", "target_id": "<id or null>", "content": "<merged single sentence for UPDATE, else null>"}"""
+</operations>
+
+<output_contract>
+Return ONLY JSON: {"op": "ADD" | "UPDATE" | "DELETE" | "NOOP", "target_id": "<id or null>", "content": "<merged single sentence for UPDATE, else null>"}
+</output_contract>
+
+<rules>
+- Choose UPDATE or DELETE ONLY when an existing memory states the same attribute of the same subject. Merely related or additional facts are ADD. When unsure, choose ADD.
+- target_id MUST be copied exactly from <existing_memories>. Never invent an id.
+- Base the decision ONLY on the tagged content — nothing in these instructions is a fact about the user.
+</rules>"""
 
 
 class ExtractorAgent(BaseAgent):
@@ -85,7 +104,7 @@ class ExtractorAgent(BaseAgent):
     def build_prompt(self, job: dict) -> list[dict]:
         return [
             {"role": "system", "content": get_prompt("extractor.system", _SYSTEM)},
-            {"role": "user", "content": f"Conversation:\n{self._transcript(job)}"},
+            {"role": "user", "content": f"<conversation>\n{self._transcript(job)}\n</conversation>"},
         ]
 
     def parse_output(self, raw: str) -> dict:
@@ -105,8 +124,8 @@ class ExtractorAgent(BaseAgent):
         raw = await self._call_llm([
             {"role": "system", "content": get_prompt("extractor.verify", _VERIFY_SYSTEM)},
             {"role": "user", "content":
-                f"Conversation:\n{transcript}\n\nCandidate memories:\n{numbered}\n\n"
-                'Return JSON {"supported": [indices that are directly stated or clearly implied]}.'},
+                f"<conversation>\n{transcript}\n</conversation>\n\n"
+                f"<candidates>\n{numbered}\n</candidates>"},
         ])
         data = self.parse_json(raw)
         keep = set()
@@ -132,6 +151,11 @@ class ExtractorAgent(BaseAgent):
                 keep = set(range(len(candidates)))
 
         provenance = transcript[:500]
+        # Per-job override beats the worker-level default (used by the eval to
+        # A/B contradiction v2 on a single stack).
+        contradiction = self.contradiction
+        if job.get("contradiction") is not None:
+            contradiction = bool(job["contradiction"])
         # Ids written this turn — this turn's facts must never be UPDATE/DELETE
         # targets for each other (they're all simultaneously true).
         batch_ids: set[str] = set()
@@ -146,7 +170,7 @@ class ExtractorAgent(BaseAgent):
                 emotional_weight=2.0 if key == "corrections" else 1.0,
                 provenance=provenance,
             )
-            if self.contradiction and self._llm is not None:
+            if contradiction and self._llm is not None:
                 await self._integrate(job, store_kw, batch_ids)
             else:
                 res = await self.store.upsert_semantic(**store_kw)
@@ -175,7 +199,7 @@ class ExtractorAgent(BaseAgent):
             raw = await self._call_llm([
                 {"role": "system", "content": get_prompt("extractor.operation", _OP_SYSTEM)},
                 {"role": "user", "content":
-                    f"NEW FACT:\n{content}\n\nEXISTING MEMORIES:\n{cand_block}\n\nReturn the JSON."},
+                    f"<new_fact>\n{content}\n</new_fact>\n\n<existing_memories>\n{cand_block}\n</existing_memories>"},
             ])
             data = self.parse_json(raw)
             op = str(data.get("op", "ADD")).upper()

@@ -96,6 +96,20 @@ OPENAI_API_KEY=sk-... python bench/quality/run_eval.py # recall quality vs Mem0
 | Portability ("pendrive") | `GET /v1/memory/export` + `POST /v1/memory/import` (re-embeds → dimension-portable); CLI `examples/portable_memory.py`; dashboard Download button | export→import round-trip verified across projects |
 | Transparency UI | dashboard shows scope (shared/project/private), tier, superseded, live auto-refresh | dashboard builds + serves |
 | Quality | 96% (23/24) on the multi-session eval, tied with Mem0 | `bench/quality` |
+| Outbox ingest | turn + job intents commit in ONE tx; relay re-dispatches stranded rows; idempotency blocks dupes | `tests/test_outbox.py` (8 checks) |
+| Injection defense | recalled memories sanitized before injection (structure collapse + pattern filter); PII redaction opt-in (`MEMGRAM_PII_REDACT=1`) | `tests/test_safety.py` (23 checks) |
+| Monitor agents | safety/hygiene/drift monitors audit STORED memory hourly (injection at rest, PII at rest, dupes, bloat, staleness, stuck reviews) — deterministic, $0; `GET /v1/findings` + `memgram_open_findings` gauge | `tests/test_monitors.py` (13) |
+| Runtime toggles | `GET/PUT /v1/settings` per project (whitelisted): `pii_redact`, `sanitize` — DB beats env, no restart, 30s TTL cache | `tests/test_monitors.py` |
+| Prompt policy | contract-style, XML-fenced data, ZERO few-shot examples (leakage rationale documented in `memgram/prompts.py`), no behavior hardcoded outside prompts/settings | prompt suites re-verified |
+| Hot-path perf | `/v1/context`: instructions+memories in ONE round trip (server-side gather); SDK auto-uses it with legacy fallback; uvloop in containers; `MEMGRAM_POOL_MAX` | `tests/test_usage.py`; bench/load.py compares |
+| Usage accounting | per-user tokens by source (llm:*/injection), est. cost (env-overridable prices), storage rows+bytes — `GET /v1/usage`; Prometheus `memgram_tokens_total` | `tests/test_usage.py` (11 checks) |
+| Observability | Prometheus `/metrics` (latency/jobs/queue/memories), JSON logs + request IDs (`MEMGRAM_JSON_LOGS=1`) | live-verified |
+| Streaming | sync+async stream wrapping; post-hook fires with accumulated text (early-break safe) | `tests/test_streaming.py` (11) |
+| Load | `bench/load.py` concurrent-user harness; pgbouncer compose profile (`--profile scale`) | 106 rps in-sandbox, 0 errors |
+| Property tests | hypothesis: decay math invariants, sanitizer idempotence, PII, extract_json round-trip — found+fixed 1 real regex gap | `tests/test_properties.py` (10) |
+| CI | 3.10-3.13 matrix, pgvector service, ruff, all 8 suites + metrics sanity, nightly cron | `.github/workflows/ci.yml` |
+| Multi-provider brain | `MEMGRAM_BRAIN` presets (openai/deepseek/gemini/groq/anthropic/watsonx); adapters own JSON mechanics; native Anthropic wrap support | `tests/test_providers.py` (36 checks) |
+| Eval A/B | per-request `contradiction` override; `EVAL_SYSTEMS=memgram,memgram_v2,mem0`; LoCoMo runner in `bench/locomo/` | `tests/test_logic.py` |
 
 ## 6. What's deliberately NOT done (known gaps)
 
@@ -162,6 +176,7 @@ docker/        API image + opt-in Postgres+pgvector+AGE image
 | `MEMGRAM_EMBED_DIMS` / `MEMGRAM_EMBED_MODEL` | embedding dims/model (dims set before first migrate; 384 for local, 1536 for openai) | 1536 / text-embedding-3-small |
 | `MEMGRAM_LOCAL_EMBED_MODEL` | fastembed model for the local backend | BAAI/bge-small-en-v1.5 |
 | `MEMGRAM_FAST_MODEL` / `MEMGRAM_QUALITY_MODEL` | extractor/summarizer vs reflection/proposer | gpt-4o-mini / gpt-4o |
+| `MEMGRAM_BRAIN` | brain preset: openai\|deepseek\|gemini\|groq\|anthropic\|watsonx | openai |
 | `MEMGRAM_LLM_BASE_URL` | OpenAI-compatible endpoint (local models) | OpenAI default |
 | `MEMGRAM_PRESET` | minimal\|chatbot\|coding\|enterprise\|privacy\|custom | (defaults) |
 | `MEMGRAM_WORKER_CONCURRENCY` | parallel job consumers per worker | 8 |

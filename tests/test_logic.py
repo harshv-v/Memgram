@@ -228,6 +228,25 @@ st = run_integration(["The user lives in Munich."],
 ck("contradiction off: plain store, no search",
    st.upserts == ["The user lives in Munich."] and st.searches == 0 and st.supersedes == [])
 
+# per-job override beats the worker default (the eval's single-stack A/B switch)
+def run_with_job_override(worker_default, job_override):
+    st = OpStore([{"id": "old1", "content": "The user lives in Berlin.", "dist": 0.3}])
+    ag = ExtractorAgent(store=st, llm=FakeLLM(),
+                        config={"contradiction": worker_default, "faithfulness": False})
+    job = {"project_id": "p", "agent_id": "a", "user_id": "u",
+           "messages": [{"role": "user", "content": "ctx"}],
+           "contradiction": job_override}
+    asyncio.run(ag.on_success(job, {"facts": [
+        {"content": "The user lives in Munich.", "memory_type": "fact"}]}))
+    return st
+
+st = run_with_job_override(worker_default=False, job_override=True)
+ck("job override ON beats worker default off (v2 ran)",
+   st.searches == 1 and st.supersedes == [("old1", "new1")])
+st = run_with_job_override(worker_default=True, job_override=False)
+ck("job override OFF beats worker default on (plain store)",
+   st.searches == 0 and st.supersedes == [])
+
 
 fail = False
 for n, c in checks:

@@ -54,6 +54,19 @@ class MemgramAdapter:
         return [m["content"] for m in r.json()["memories"]]
 
 
+class MemgramV2Adapter(MemgramAdapter):
+    """Memgram with contradiction v2 (operation-selection integration) ON,
+    via the per-request override — same stack, same worker, true A/B."""
+    name = "memgram_v2"
+
+    def ingest(self, persona, turns):
+        msgs = [{"role": "user", "content": t} for t in turns]
+        self.c.post("/v1/ingest", json={
+            "project_id": self.project, "agent_id": self.agent, "user_id": persona,
+            "messages": msgs, "response_text": "Understood.",
+            "contradiction": True}).raise_for_status()
+
+
 class Mem0Adapter:
     name = "mem0"
 
@@ -82,4 +95,5 @@ class Mem0Adapter:
         return [r["memory"] for r in items]
 
 
-ADAPTERS = {"memgram": MemgramAdapter, "mem0": Mem0Adapter}
+ADAPTERS = {"memgram": MemgramAdapter, "memgram_v2": MemgramV2Adapter,
+            "mem0": Mem0Adapter}

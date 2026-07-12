@@ -26,13 +26,33 @@ _LOCAL_MODEL = os.environ.get("MEMGRAM_LOCAL_EMBED_MODEL", "BAAI/bge-small-en-v1
 
 
 class FakeEmbedder:
-    """Deterministic, normalized, content-sensitive. Similar strings do NOT
-    get similar vectors (it's a hash) — tests that need similarity reuse
-    exact strings."""
+    """Deterministic bag-of-words embedding: each token hashes to a fixed
+    pseudo-vector; a text embeds as the normalized sum. Identical strings get
+    identical vectors (dedup works) and RELATED sentences get RELATED vectors
+    ("lives in Berlin" ~ "lives in Munich"), so similarity-driven behaviour —
+    dedup, contradiction candidates, ranked retrieval — is realistic with zero
+    network calls. Not a semantic model: paraphrases without shared tokens
+    won't match."""
+
+    _token_cache: dict = {}
+
+    def _token_vec(self, tok: str) -> list[float]:
+        if tok not in self._token_cache:
+            h = hashlib.sha256(tok.encode()).digest()
+            self._token_cache[tok] = [
+                ((h[(i * 7 + 3) % 32] * 31 + i * 13) % 997 - 498.0) for i in range(DIMS)]
+        return self._token_cache[tok]
 
     async def embed(self, text: str) -> list[float]:
-        h = hashlib.sha256(text.lower().strip().encode()).digest()
-        vals = [(h[i % 32] * 31 + i * 7) % 997 - 498.0 for i in range(DIMS)]
+        toks = [t for t in "".join(
+            c if c.isalnum() else " " for c in text.lower()).split() if t]
+        if not toks:
+            toks = ["empty"]
+        vals = [0.0] * DIMS
+        for tok in set(toks):
+            tv = self._token_vec(tok)
+            for i in range(DIMS):
+                vals[i] += tv[i]
         norm = math.sqrt(sum(v * v for v in vals)) or 1.0
         return [v / norm for v in vals]
 

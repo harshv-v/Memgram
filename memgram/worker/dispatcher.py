@@ -3,8 +3,11 @@ framework' is this dict and a loop."""
 import asyncio
 import logging
 import os
+import time
 
+from memgram.obs import JOBS_TOTAL, JOB_SECONDS
 from memgram.agents.decay import DecayAgent
+from memgram.agents.monitors import MonitorSuite
 from memgram.agents.extractor import ExtractorAgent
 from memgram.agents.procedural import ProceduralAgent
 from memgram.agents.proposer import ProposerAgent
@@ -15,17 +18,15 @@ logger = logging.getLogger("memgram.worker")
 
 
 def get_llm():
-    """Any OpenAI-compatible endpoint. MEMGRAM_FAKE_LLM=1 → canned responses
-    (full pipeline runs with zero external calls)."""
+    """The worker's brain. MEMGRAM_FAKE_LLM=1 -> canned responses (zero external
+    calls); otherwise MEMGRAM_BRAIN picks the provider (openai | deepseek |
+    gemini | groq | anthropic | watsonx) — see memgram/llm.py."""
     if os.environ.get("MEMGRAM_FAKE_LLM"):
         from memgram.testing import FakeLLM
         return FakeLLM()
-    from openai import AsyncOpenAI
-    # `or None`: compose injects MEMGRAM_LLM_BASE_URL="" by default, and an empty
-    # string is NOT the same as unset — it would override the OpenAI default with
-    # a blank base URL and every request would fail with "Connection error".
-    base_url = os.environ.get("MEMGRAM_LLM_BASE_URL") or None
-    return AsyncOpenAI(base_url=base_url)
+    from memgram.llm import get_brain_llm
+    return get_brain_llm()
+
 
 
 class Dispatcher:
@@ -39,6 +40,7 @@ class Dispatcher:
             "reflect":   ReflectionAgent(store, config.get("reflection"), llm, queue=queue),
             "propose":   ProposerAgent(store, config.get("proposer"), llm, embedder=embedder),
             "decay":     DecayAgent(store, config.get("decay")),
+            "monitor":   MonitorSuite(store, config.get("monitors")),
             "procedural": ProceduralAgent(store, config.get("procedural"), llm),
         }
         # extract jobs count toward the reflection cadence
@@ -59,7 +61,11 @@ class Dispatcher:
         if agent is None:
             logger.error("unknown job type %s", job["type"])
             return None
+        t0 = time.perf_counter()
         result = await agent.run(job["payload"])
+        JOB_SECONDS.labels(type=job["type"]).observe(time.perf_counter() - t0)
+        JOBS_TOTAL.labels(type=job["type"],
+                          status="ok" if result is not None else "failed").inc()
         logger.info("job %s (%s) -> %s", job["id"], job["type"], result)
 
         if job["type"] == "extract" and self.features.get("reflection", True):
